@@ -1,0 +1,36 @@
+:root {
+  color-scheme: dark;
+  --bg: #0a0b0f;
+  --panel: #14161d;
+  --panel-2: #1a1d26;
+  --border: #262a35;
+  --text: #e5e7eb;
+  --text-dim: #8b8fa3;
+  --accent: #a78bfa;
+  --accent-2: #ffc83c;
+
+  font: 15px/1.5 'Segoe UI', system-ui, Roboto, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
