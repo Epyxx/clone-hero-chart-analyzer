@@ -11,6 +11,7 @@ Available in **English** and **German**, switchable via the flag toggle in the a
 - Dynamic-programming Star Power optimizer that tests every banking/activation combination under the real single-gauge drain/gain model (including "early whammy")
 - Interactive SVG highway with notes, sustains, HOPO/Tap/Open markers, SP phrases, and the calculated optimal activation windows — hover anywhere to see the running score at that point in the song
 - Reads `song.ini` metadata and album art; supports dropping a zipped song folder directly
+- Links directly to the chart's page on `leaderboards.clonehero.net` by reconstructing the same hash the game itself uses to identify a chart (requires `song.ini`; see [How it works](#how-it-works))
 - No backend, no data collection — everything runs client-side in the browser
 
 ## How it works
@@ -18,6 +19,7 @@ Available in **English** and **German**, switchable via the flag toggle in the a
 - **Parsers** (`src/parsers/`): custom implementations for `.chart` (text) and `.mid` (binary Standard MIDI File), following the [GuitarGame_ChartFormats documentation](https://thenathannator.github.io/GuitarGame_ChartFormats/).
 - **Score engine** (`src/scoring/score.ts`): 50 points/note, discrete sustain ticks, 1x–4x multiplier tiers (every 10-note combo streak), solo bonus, clean-play bonus — values cross-checked against the [Clone Hero Wiki](https://wiki.clonehero.net/books/general-info/page/dictionary) and verified against actual in-game score gains.
 - **Star Power optimizer** (`src/scoring/optimizer.ts`): dynamic programming over every SP phrase to find the banking/activation combination that maximizes the score bonus. The gauge mechanic (25%/phrase, 1/30 of the gauge per quarter-note of whammy, a full gauge draining over exactly 8 measures) follows the model used by [CHOpt](https://github.com/GenericMadScientist/CHOpt), the open-source SP path optimizer the Clone Hero community uses to verify leaderboard runs — simplified by not simulating note-level timing-squeeze techniques.
+- **Leaderboard hash** (`src/leaderboard/`): Clone Hero identifies a chart on `leaderboards.clonehero.net` by a BLAKE3 hash of the parsed chart data plus `song.ini` metadata (the format is not publicly documented). This was reverse-engineered from the game's own IL2CPP binary — decompiled with Ghidra and traced with a live debugger (x64dbg) against real in-game memory buffers — and is verified byte-for-byte against several real leaderboard hashes for `.chart`-format guitar/bass/rhythm tracks. Keyboard, 6-Fret instruments, and `.mid` charts use the same reconstructed algorithm but with a few details (instrument index, default HOPO threshold/sustain cutoff) that couldn't be confirmed against a live capture. `song.ini` is required, since the hash embeds fields (song length, modchart flag, charter icon) that aren't derivable from a chart file alone.
 - **Visualization** (`src/components/Highway.tsx`): SVG highway rendering notes, sustains, SP phrases, and the calculated optimal activation windows.
 
 All assumptions and simplifications are documented in-app under "Assumptions & Scoring Methodology" (bottom of the page).
@@ -30,12 +32,6 @@ npm run dev
 ```
 
 Then drop `notes.chart`, `notes.mid`, or a zipped song folder onto the page (optionally together with `song.ini` and album art).
-
-## Testing the parser/scoring logic without the UI
-
-```bash
-npx tsx scripts/testParse.ts
-```
 
 ## Deployment via Docker
 

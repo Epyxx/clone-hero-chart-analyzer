@@ -86,6 +86,8 @@ const en = {
   'activationList.measuresUnit': 'measures',
 
   'assumptions.summary': 'Assumptions & Scoring Methodology',
+
+  'leaderboard.viewLink': 'View on Clone Hero Leaderboards ↗',
 } satisfies Record<string, string>;
 
 const de = {
@@ -176,6 +178,8 @@ const de = {
   'activationList.measuresUnit': 'Takte',
 
   'assumptions.summary': 'Annahmen & Berechnungsgrundlage',
+
+  'leaderboard.viewLink': 'Auf Clone Hero Leaderboards ansehen ↗',
 } satisfies Record<keyof typeof en, string>;
 
 export type TranslationKey = keyof typeof en;

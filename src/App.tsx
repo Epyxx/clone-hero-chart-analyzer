@@ -8,7 +8,9 @@ import { SongMetaPanel } from './components/SongMetaPanel';
 import { Highway, HIGHWAY_LAYOUT, FRET_LABEL_COLORS } from './components/Highway';
 import { AssumptionsPanel } from './components/AssumptionsPanel';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
+import { LeaderboardLink } from './components/LeaderboardLink';
 import { useLanguage } from './i18n/LanguageContext';
+import { computeLeaderboardLink } from './leaderboard';
 import { parseChartFile } from './parsers/chartParser';
 import { parseMidFile } from './parsers/midParser';
 import { parseSongIni } from './parsers/songIni';
@@ -127,6 +129,15 @@ function App() {
 
   const scoreIndex = useMemo(() => (scored ? new ScoreRangeIndex(scored) : null), [scored]);
 
+  const leaderboardLink = useMemo(() => {
+    if (!chart || !stats) return null;
+    try {
+      return computeLeaderboardLink(chart, ini, stats.lengthSeconds);
+    } catch {
+      return null;
+    }
+  }, [chart, ini, stats]);
+
   const availableDifficulties = instrumentData
     ? DIFF_ORDER.filter((d) => instrumentData.difficulties[d])
     : [];
@@ -146,6 +157,7 @@ function App() {
       {chart && stats && (
         <>
           <SongMetaPanel chart={chart} ini={ini} albumArtUrl={albumArtUrl} stats={stats} />
+          {leaderboardLink && <LeaderboardLink url={leaderboardLink.url} />}
 
           <Selectors
             instruments={chart.instruments.map((i) => i.instrument)}

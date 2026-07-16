@@ -78,6 +78,17 @@ function EnglishBody() {
         value is therefore a very tight, provably optimal upper bound within this model - real leaderboard scores
         from top players can come in just under it, but never above.
       </p>
+      <p className="assumptions__caveat">
+        The "View on Clone Hero Leaderboards" link reconstructs the same hash Clone Hero itself computes to identify
+        a chart on <code>leaderboards.clonehero.net</code>, reverse-engineered from the game's code and verified
+        byte-for-byte against several real leaderboard hashes. It only appears when <strong>song.ini</strong> was
+        uploaded alongside the chart, since the hash embeds the song length, the modchart flag, and the charter
+        icon name - none of which can be reliably determined from a <code>.chart</code>/<code>.mid</code> file
+        alone. Within that, it is <strong>fully confirmed</strong> for Guitar/Bass/Rhythm tracks from{' '}
+        <code>.chart</code> files. For Keyboard, 6-Fret Guitar/Bass, and <code>.mid</code> charts, the same
+        algorithm is applied, but with details (instrument index, default HOPO threshold and sustain cutoff) that
+        could not be verified against a live capture - the generated link may be wrong for these cases.
+      </p>
     </div>
   );
 }
@@ -162,6 +173,19 @@ function GermanBody() {
         Star Power gewertet werden). Der berechnete Wert ist daher eine sehr enge, nachweislich optimale Obergrenze
         innerhalb dieses Modells — echte Bestenlisten-Scores von Top-Spielern können knapp darunter liegen, aber
         nicht darüber.
+      </p>
+      <p className="assumptions__caveat">
+        Der Link "Auf Clone Hero Leaderboards ansehen" rekonstruiert denselben Hash, den Clone Hero selbst zur
+        Identifikation eines Charts auf <code>leaderboards.clonehero.net</code> berechnet - per Reverse Engineering
+        aus dem Spielcode ermittelt und byte-genau gegen mehrere echte Leaderboard-Hashes verifiziert. Er erscheint
+        nur, wenn zusätzlich eine <strong>song.ini</strong> hochgeladen wurde, da der Hash die Songlänge, das
+        Modchart-Flag und den Charter-Icon-Namen enthält - Werte, die sich aus einer{' '}
+        <code>.chart</code>-/<code>.mid</code>-Datei allein nicht zuverlässig bestimmen lassen. Innerhalb dessen
+        gilt das als <strong>vollständig bestätigt</strong> für Gitarre-/Bass-/Rhythmus-Spuren aus{' '}
+        <code>.chart</code>-Dateien. Für Keyboard, 6-Fret-Gitarre/-Bass und <code>.mid</code>-Charts wird derselbe
+        Algorithmus angewendet, jedoch mit Details (Instrument-Index, Standard-HOPO-Schwellenwert und
+        Sustain-Cutoff), die sich nicht gegen eine Live-Aufzeichnung verifizieren ließen - der erzeugte Link kann in
+        diesen Fällen falsch sein.
       </p>
     </div>
   );
