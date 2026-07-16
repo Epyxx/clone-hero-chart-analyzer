@@ -1,5 +1,6 @@
 import type {
   DifficultyTrack,
+  DrumDifficultyTrack,
   Fret,
   InstrumentCharts,
   NoteEvent,
@@ -10,6 +11,7 @@ import type {
   TimeSigEvent,
 } from '../model/chart';
 import { resolveHopos } from './hopo';
+import { parseChartDrumTrack } from './chartDrumParser';
 
 const DIFF_PREFIXES: Record<string, DifficultyTrack['difficulty']> = {
   Easy: 'Easy',
@@ -177,21 +179,38 @@ export function parseChartFile(text: string, resolutionHint?: number): ParsedCha
   const { tempos, timeSigs } = parseSyncTrack(syncLines);
 
   const instrumentsMap = new Map<string, InstrumentCharts>();
+  const unsupportedInstruments = new Set<string>();
+  const drums: Partial<Record<DrumDifficultyTrack['difficulty'], DrumDifficultyTrack>> = {};
+  let hasFiveLaneDrums = false;
   let lastTick = 0;
 
   for (const [sectionName, lines] of sections) {
     let matchedDiff: DifficultyTrack['difficulty'] | null = null;
     let matchedInstrument: string | null = null;
+    let unsupportedSuffix: string | null = null;
     for (const [prefix, diff] of Object.entries(DIFF_PREFIXES)) {
       if (sectionName.startsWith(prefix)) {
         const rest = sectionName.slice(prefix.length);
-        if (INSTRUMENT_SUFFIXES.includes(rest)) {
+        if (rest === 'Drums') {
+          const { track, isFiveLane } = parseChartDrumTrack(lines, diff);
+          if (isFiveLane) hasFiveLaneDrums = true;
+          else if (track) {
+            drums[diff] = track;
+            for (const n of track.notes) lastTick = Math.max(lastTick, n.tick);
+            for (const s of track.starPower) lastTick = Math.max(lastTick, s.tick + s.length);
+          }
+        } else if (INSTRUMENT_SUFFIXES.includes(rest)) {
           matchedDiff = diff;
           matchedInstrument = rest;
+        } else if (rest) {
+          unsupportedSuffix = rest;
         }
       }
     }
-    if (!matchedDiff || !matchedInstrument) continue;
+    if (!matchedDiff || !matchedInstrument) {
+      if (unsupportedSuffix) unsupportedInstruments.add(unsupportedSuffix);
+      continue;
+    }
 
     const track = parseDifficultyTrack(lines, matchedDiff);
     resolveHopos(track.notes, resolution);
@@ -206,6 +225,10 @@ export function parseChartFile(text: string, resolutionHint?: number): ParsedCha
     inst.difficulties[matchedDiff] = track;
   }
 
+  // A 5-lane drums track has no equivalent in this app's drum model (only 4-lane is
+  // implemented/reverse-engineered) - flag it as unsupported rather than hash it incorrectly.
+  if (hasFiveLaneDrums) unsupportedInstruments.add('Drums (5-lane)');
+
   return {
     formatSource: 'chart',
     name: song.name,
@@ -219,5 +242,7 @@ export function parseChartFile(text: string, resolutionHint?: number): ParsedCha
     timeSigs,
     instruments: Array.from(instrumentsMap.values()),
     lastTick,
+    unsupportedInstruments: Array.from(unsupportedInstruments),
+    drums: Object.keys(drums).length > 0 && !hasFiveLaneDrums ? drums : undefined,
   };
 }

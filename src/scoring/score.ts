@@ -15,6 +15,29 @@ export const SOLO_MAX_BONUS_PER_NOTE = 100;
 export const CLEAN_PLAY_BONUS_PER_NOTE = 2;
 
 /**
+ * Drum scoring constants - UNLIKE every other value in this file, these are
+ * NOT verified against real gameplay or engine source. Originally assumed to
+ * be half of a guitar note (a common older GH/RB convention), but comparing
+ * our calculated max against a real #1 leaderboard score (which must always
+ * be <= the true theoretical max) showed that assumption was too low - the
+ * real score exceeded our "half" estimate entirely. Drum notes scoring the
+ * same 50 points as guitar (plus double-kick hits counting as two
+ * simultaneous kicks - see drumAdapter.ts) lines up much better: the real
+ * top score then lands just below our calculated max, the expected pattern.
+ * Still not byte/engine verified the way everything else here is - see the
+ * caveat in AssumptionsPanel.
+ */
+export const DRUM_POINTS_PER_NOTE = BASE_POINTS_PER_NOTE;
+export const DRUM_CLEAN_PLAY_BONUS_PER_NOTE = 0;
+export const DRUM_SOLO_BONUS_PER_NOTE = 100;
+
+export interface ScoreTrackOptions {
+  pointsPerNote?: number;
+  cleanPlayBonusPerNote?: number;
+  soloBonusPerNote?: number;
+}
+
+/**
  * Sustains are not scored as a continuous rate. The engine divides each
  * sustain into discrete "ticks" spaced `tickGap` chart-ticks apart (each
  * worth 1 point pre-multiplier), where `tickGap = floor(resolution / 25)`
@@ -71,7 +94,11 @@ function comboTier(comboCountAfterThisNote: number): number {
   return Math.min(4, Math.floor(comboCountAfterThisNote / 10) + 1);
 }
 
-export function scoreTrackBase(track: DifficultyTrack, resolution: number): ScoredTrack {
+export function scoreTrackBase(track: DifficultyTrack, resolution: number, options: ScoreTrackOptions = {}): ScoredTrack {
+  const pointsPerNote = options.pointsPerNote ?? BASE_POINTS_PER_NOTE;
+  const cleanPlayBonusPerNote = options.cleanPlayBonusPerNote ?? CLEAN_PLAY_BONUS_PER_NOTE;
+  const soloBonusPerNote = options.soloBonusPerNote ?? SOLO_MAX_BONUS_PER_NOTE;
+
   const notes: NoteScoreInfo[] = [];
   let baseScoreNoStarPower = 0;
   let cleanPlayBonus = 0;
@@ -79,7 +106,7 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number): Scor
   track.notes.forEach((note, i) => {
     const tier = comboTier(i + 1);
     const chordSize = note.isOpen ? 1 : Math.max(1, note.frets.length);
-    const hitPoints = tier * BASE_POINTS_PER_NOTE * chordSize;
+    const hitPoints = tier * pointsPerNote * chordSize;
 
     const isDisjoint = !note.isOpen && note.fretLengths.length > 1 && new Set(note.fretLengths).size > 1;
 
@@ -103,13 +130,13 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number): Scor
 
     notes.push({ note, tier, hitPoints, sustainSegments, sustainBasePoints });
     baseScoreNoStarPower += hitPoints + sustainBasePoints;
-    cleanPlayBonus += CLEAN_PLAY_BONUS_PER_NOTE * (isDisjoint ? chordSize : 1);
+    cleanPlayBonus += cleanPlayBonusPerNote * (isDisjoint ? chordSize : 1);
   });
 
   let soloBonus = 0;
   for (const solo of track.solos) {
     const count = track.notes.filter((n) => n.tick >= solo.tick && n.tick < solo.tick + solo.length).length;
-    soloBonus += count * SOLO_MAX_BONUS_PER_NOTE;
+    soloBonus += count * soloBonusPerNote;
   }
 
   return { notes, baseScoreNoStarPower, soloBonus, cleanPlayBonus, resolution };

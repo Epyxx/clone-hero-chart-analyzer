@@ -18,6 +18,8 @@ const INSTRUMENT_KEYS: Record<string, TranslationKey> = {
   Keyboard: 'instrument.Keyboard',
   GHLGuitar: 'instrument.GHLGuitar',
   GHLBass: 'instrument.GHLBass',
+  Drums: 'instrument.Drums',
+  ProDrums: 'instrument.ProDrums',
 };
 
 // Difficulty names (Expert/Hard/Medium/Easy) are used as-is by Clone Hero itself, in every language.

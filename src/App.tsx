@@ -6,23 +6,28 @@ import { Selectors } from './components/Selectors';
 import { ScoreSummary } from './components/ScoreSummary';
 import { SongMetaPanel } from './components/SongMetaPanel';
 import { Highway, HIGHWAY_LAYOUT, FRET_LABEL_COLORS } from './components/Highway';
+import { DrumHighway, DRUM_HIGHWAY_LAYOUT, DRUM_LANE_COLORS } from './components/DrumHighway';
 import { AssumptionsPanel } from './components/AssumptionsPanel';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { LeaderboardLink } from './components/LeaderboardLink';
 import { useLanguage } from './i18n/LanguageContext';
-import { computeLeaderboardLink } from './leaderboard';
+import { computeLeaderboardHash, buildLeaderboardUrl } from './leaderboard';
 import { parseChartFile } from './parsers/chartParser';
 import { parseMidFile } from './parsers/midParser';
 import { parseSongIni } from './parsers/songIni';
 import type { SongIni } from './parsers/songIni';
 import { TimingMap } from './model/timing';
 import { computeChartStats } from './model/stats';
-import { scoreTrackBase, ScoreRangeIndex } from './scoring/score';
+import { scoreTrackBase, ScoreRangeIndex, DRUM_POINTS_PER_NOTE, DRUM_CLEAN_PLAY_BONUS_PER_NOTE, DRUM_SOLO_BONUS_PER_NOTE } from './scoring/score';
 import { optimizeStarPower } from './scoring/optimizer';
-import type { ParsedChart } from './model/chart';
+import { drumTrackToDifficultyTrack } from './scoring/drumAdapter';
+import type { ParsedChart, DrumDifficultyTrack } from './model/chart';
 
 const DIFF_ORDER = ['Expert', 'Hard', 'Medium', 'Easy'] as const;
 const FRET_NAMES = ['Green', 'Red', 'Yellow', 'Blue', 'Orange'];
+const DRUM_LANE_NAMES = ['Red', 'Yellow', 'Blue', 'Green'];
+const DRUMS_INSTRUMENT_ID = 'Drums';
+const DRUMS_PRO_INSTRUMENT_ID = 'ProDrums';
 
 /** Replaces any .zip file in the list with its extracted entries (song folders are unwrapped). */
 async function expandZipFiles(files: File[]): Promise<File[]> {
@@ -90,7 +95,7 @@ function App() {
       } else {
         parsed = parseChartFile(await chartFile.text());
       }
-      if (parsed.instruments.length === 0) {
+      if (parsed.instruments.length === 0 && !parsed.drums) {
         setError(t('error.noGuitarTrack'));
         return;
       }
@@ -111,16 +116,29 @@ function App() {
     }
   }
 
+  const isDrums = instrument === DRUMS_INSTRUMENT_ID || instrument === DRUMS_PRO_INSTRUMENT_ID;
   const instrumentData = chart?.instruments.find((i) => i.instrument === instrument);
-  const track = instrumentData?.difficulties[difficulty as keyof typeof instrumentData.difficulties];
+  const guitarTrack = instrumentData?.difficulties[difficulty as keyof typeof instrumentData.difficulties];
+  const drumTrack = isDrums ? chart?.drums?.[difficulty as DrumDifficultyTrack['difficulty']] : undefined;
+
+  const track = useMemo(() => {
+    if (drumTrack) return drumTrackToDifficultyTrack(drumTrack);
+    return guitarTrack;
+  }, [drumTrack, guitarTrack]);
 
   const timing = useMemo(() => (chart ? new TimingMap(chart) : null), [chart]);
   const stats = useMemo(() => (chart && timing ? computeChartStats(chart, timing) : null), [chart, timing]);
 
   const scored = useMemo(() => {
     if (!track || !chart) return null;
-    return scoreTrackBase(track, chart.resolution);
-  }, [track, chart]);
+    return scoreTrackBase(
+      track,
+      chart.resolution,
+      isDrums
+        ? { pointsPerNote: DRUM_POINTS_PER_NOTE, cleanPlayBonusPerNote: DRUM_CLEAN_PLAY_BONUS_PER_NOTE, soloBonusPerNote: DRUM_SOLO_BONUS_PER_NOTE }
+        : {},
+    );
+  }, [track, chart, isDrums]);
 
   const result = useMemo(() => {
     if (!track || !scored || !timing || !chart) return null;
@@ -129,18 +147,27 @@ function App() {
 
   const scoreIndex = useMemo(() => (scored ? new ScoreRangeIndex(scored) : null), [scored]);
 
-  const leaderboardLink = useMemo(() => {
+  const leaderboardHash = useMemo(() => {
     if (!chart || !stats) return null;
     try {
-      return computeLeaderboardLink(chart, ini, stats.lengthSeconds);
+      return computeLeaderboardHash(chart, ini, stats.lengthSeconds);
     } catch {
       return null;
     }
   }, [chart, ini, stats]);
 
-  const availableDifficulties = instrumentData
-    ? DIFF_ORDER.filter((d) => instrumentData.difficulties[d])
-    : [];
+  // The hash identifies the whole song - the URL just needs to point at whichever
+  // instrument+difficulty the user currently has selected in the app.
+  const leaderboardUrl = useMemo(() => {
+    if (!leaderboardHash || !instrument || !difficulty) return null;
+    return buildLeaderboardUrl(leaderboardHash, instrument, difficulty);
+  }, [leaderboardHash, instrument, difficulty]);
+
+  const availableDifficulties = isDrums
+    ? DIFF_ORDER.filter((d) => chart?.drums?.[d])
+    : instrumentData
+      ? DIFF_ORDER.filter((d) => instrumentData.difficulties[d])
+      : [];
 
   return (
     <div className="app">
@@ -157,15 +184,23 @@ function App() {
       {chart && stats && (
         <>
           <SongMetaPanel chart={chart} ini={ini} albumArtUrl={albumArtUrl} stats={stats} />
-          {leaderboardLink && <LeaderboardLink url={leaderboardLink.url} />}
+          {leaderboardUrl && <LeaderboardLink url={leaderboardUrl} />}
 
           <Selectors
-            instruments={chart.instruments.map((i) => i.instrument)}
+            instruments={[
+              ...chart.instruments.map((i) => i.instrument),
+              ...(chart.drums ? [DRUMS_INSTRUMENT_ID, DRUMS_PRO_INSTRUMENT_ID] : []),
+            ]}
             difficulties={availableDifficulties}
             instrument={instrument}
             difficulty={difficulty}
             onInstrument={(v) => {
               setInstrument(v);
+              if (v === DRUMS_INSTRUMENT_ID || v === DRUMS_PRO_INSTRUMENT_ID) {
+                const d = DIFF_ORDER.find((d) => chart.drums?.[d]) ?? Object.keys(chart.drums ?? {})[0];
+                if (d) setDifficulty(d);
+                return;
+              }
               const inst = chart.instruments.find((i) => i.instrument === v);
               const d = inst && (DIFF_ORDER.find((d) => inst.difficulties[d]) ?? Object.keys(inst.difficulties)[0]);
               if (d) setDifficulty(d);
@@ -211,38 +246,72 @@ function App() {
                     <i className="legend__swatch" style={{ background: '#38e0e0' }} />
                     {t('legend.solo')}
                   </span>
-                  <span className="legend__item legend__item--sep">
-                    <i className="legend__dot" style={{ background: '#f2d43d' }} />
-                    {t('legend.note')}
-                  </span>
-                  <span className="legend__item">
-                    <i className="legend__dot legend__dot--hopo" style={{ background: '#f2d43d' }} />
-                    {t('legend.hopo')}
-                  </span>
-                  <span className="legend__item">
-                    <i className="legend__dot" style={{ background: '#f2d43d', opacity: 0.5 }} />
-                    {t('legend.tap')}
-                  </span>
-                  <span className="legend__item">
-                    <i className="legend__swatch legend__swatch--bar" style={{ background: '#b45cf0' }} />
-                    {t('legend.open')}
-                  </span>
+                  {isDrums ? (
+                    <>
+                      <span className="legend__item legend__item--sep">
+                        <i className="legend__dot" style={{ background: '#f2d43d' }} />
+                        {t('legend.cymbal')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__dot" style={{ background: '#f2d43d', borderRadius: 0 }} />
+                        {t('legend.tom')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__dot" style={{ background: '#f2d43d', opacity: 0.5, transform: 'scale(0.75)' }} />
+                        {t('legend.ghost')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__dot" style={{ background: '#f2d43d', outline: '1.5px solid #ffe066', outlineOffset: 1 }} />
+                        {t('legend.accent')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__swatch legend__swatch--bar" style={{ background: '#f2953d' }} />
+                        {t('legend.kick')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__swatch legend__swatch--bar" style={{ background: '#f2953d', outline: '1.5px solid #ffffff', outlineOffset: 1 }} />
+                        {t('legend.doubleKick')}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="legend__item legend__item--sep">
+                        <i className="legend__dot" style={{ background: '#f2d43d' }} />
+                        {t('legend.note')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__dot legend__dot--hopo" style={{ background: '#f2d43d' }} />
+                        {t('legend.hopo')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__dot" style={{ background: '#f2d43d', opacity: 0.5 }} />
+                        {t('legend.tap')}
+                      </span>
+                      <span className="legend__item">
+                        <i className="legend__swatch legend__swatch--bar" style={{ background: '#b45cf0' }} />
+                        {t('legend.open')}
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
               <div className="highway-wrapper">
                 <div
                   className="highway-labels"
-                  style={{ paddingTop: HIGHWAY_LAYOUT.TOP_MARGIN, paddingBottom: HIGHWAY_LAYOUT.BOTTOM_MARGIN }}
+                  style={{
+                    paddingTop: isDrums ? DRUM_HIGHWAY_LAYOUT.TOP_MARGIN : HIGHWAY_LAYOUT.TOP_MARGIN,
+                    paddingBottom: isDrums ? DRUM_HIGHWAY_LAYOUT.BOTTOM_MARGIN : HIGHWAY_LAYOUT.BOTTOM_MARGIN,
+                  }}
                 >
-                  {FRET_NAMES.map((name, i) => (
+                  {(isDrums ? DRUM_LANE_NAMES : FRET_NAMES).map((name, i) => (
                     <div
                       key={name}
                       className="highway-labels__item"
                       style={{
-                        height: HIGHWAY_LAYOUT.LANE_HEIGHT,
-                        marginBottom: HIGHWAY_LAYOUT.LANE_GAP,
-                        color: FRET_LABEL_COLORS[i],
+                        height: isDrums ? DRUM_HIGHWAY_LAYOUT.LANE_HEIGHT : HIGHWAY_LAYOUT.LANE_HEIGHT,
+                        marginBottom: isDrums ? DRUM_HIGHWAY_LAYOUT.LANE_GAP : HIGHWAY_LAYOUT.LANE_GAP,
+                        color: isDrums ? DRUM_LANE_COLORS[i] : FRET_LABEL_COLORS[i],
                       }}
                     >
                       {name}
@@ -250,16 +319,28 @@ function App() {
                   ))}
                 </div>
                 <div className="highway-scroll">
-                  <Highway
-                    track={track}
-                    timing={timing!}
-                    resolution={chart.resolution}
-                    lastTick={chart.lastTick}
-                    activations={result.activations}
-                    usedPhraseIndices={result.usedPhraseIndices}
-                    scoreIndex={scoreIndex}
-                    pxPerTick={pxPerTick}
-                  />
+                  {isDrums && drumTrack ? (
+                    <DrumHighway
+                      track={drumTrack}
+                      timing={timing!}
+                      lastTick={chart.lastTick}
+                      activations={result.activations}
+                      usedPhraseIndices={result.usedPhraseIndices}
+                      scoreIndex={scoreIndex}
+                      pxPerTick={pxPerTick}
+                    />
+                  ) : (
+                    <Highway
+                      track={track}
+                      timing={timing!}
+                      resolution={chart.resolution}
+                      lastTick={chart.lastTick}
+                      activations={result.activations}
+                      usedPhraseIndices={result.usedPhraseIndices}
+                      scoreIndex={scoreIndex}
+                      pxPerTick={pxPerTick}
+                    />
+                  )}
                 </div>
               </div>
 

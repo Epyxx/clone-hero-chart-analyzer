@@ -79,15 +79,57 @@ function EnglishBody() {
         from top players can come in just under it, but never above.
       </p>
       <p className="assumptions__caveat">
+        <strong>Drums scoring is a best-effort estimate, not verified against real gameplay</strong> (everything
+        above this line is). It reuses the same combo/multiplier/Star Power engine as guitar - each drum hit is
+        worth <strong>50 points</strong>, the same as a guitar note. (An earlier version of this app assumed 25 -
+        half of guitar's value, an older convention from this game genre - but a real #1 leaderboard score for a
+        Pro Drums chart came in <em>higher</em> than that estimate, which can never happen for a true maximum, so
+        the assumption was revised.) A double-kick hit (both pedals at once) counts as two simultaneous kick hits
+        for scoring, same as a chord - unverified, but this is what makes the calculated max land just above that
+        real score rather than below it. No clean-play bonus (a guitar/bass strum-accuracy mechanic with no drum
+        equivalent) and no sustain scoring (drum hits are always instantaneous). Cymbal-vs-tom, ghost notes, and
+        accents are rendered on the highway but assumed not to change the point value. There is no drum equivalent
+        of guitar's whammy, so Star Power gauge fill comes only from completing SP phrases (25% each); real drum
+        Star Power is activated by playing through a "fill" zone rather than manually at any moment, which isn't
+        modeled - the calculated activation timing may be slightly more flexible than what's actually achievable.
+        Treat the drum max score as a reasonable estimate, not a guaranteed exact figure the way guitar/bass is.
+      </p>
+      <p className="assumptions__caveat">
+        <strong>Drums</strong> and <strong>Pro Drums</strong> are offered as separate instruments, matching Clone
+        Hero's own leaderboards - confirmed by comparing real leaderboard URLs for the same chart: both use the{' '}
+        <em>exact same</em> SongHash, only the <code>instrument</code> and <code>controllerTypes</code> URL
+        parameters differ (<code>drums</code>/<code>5LaneDrums</code> vs.{' '}
+        <code>prodrums</code>/<code>7LaneDrums,5LaneDrums</code>). This app computes identical chart data and an
+        identical calculated score for both - there's currently no evidence the underlying scoring formula itself
+        differs between the two modes, only that real players' hardware (and therefore what they can accurately
+        hit) does.
+      </p>
+      <p className="assumptions__caveat">
         The "View on Clone Hero Leaderboards" link reconstructs the same hash Clone Hero itself computes to identify
         a chart on <code>leaderboards.clonehero.net</code>, reverse-engineered from the game's code and verified
         byte-for-byte against several real leaderboard hashes. It only appears when <strong>song.ini</strong> was
         uploaded alongside the chart, since the hash embeds the song length, the modchart flag, and the charter
-        icon name - none of which can be reliably determined from a <code>.chart</code>/<code>.mid</code> file
-        alone. Within that, it is <strong>fully confirmed</strong> for Guitar/Bass/Rhythm tracks from{' '}
-        <code>.chart</code> files. For Keyboard, 6-Fret Guitar/Bass, and <code>.mid</code> charts, the same
-        algorithm is applied, but with details (instrument index, default HOPO threshold and sustain cutoff) that
-        could not be verified against a live capture - the generated link may be wrong for these cases.
+        icon name - none of which can be reliably determined from a chart file alone. Confirmed directly by a
+        Clone Hero developer: "there are some defaults the game uses but it just means you will have random
+        charts that are incorrect [...] because those ini values that we do include change the parsed chart in
+        some way" - i.e. even the game itself can't reliably fall back to chart-only defaults, which is why this
+        app doesn't try to either. The hash also embeds an
+        entry for every charted <em>playable, scored</em> instrument this app can't parse (pro-instrument tracks,
+        5-lane Drums) - if the file has any, the link is hidden, since it can never be
+        reconstructed correctly without them. Lead/harmony vocals are the one exception: Clone Hero doesn't
+        support playable vocal scoring (a charted vocals track only drives the on-screen scrolling lyrics), and a
+        real capture of a chart with a charted vocals track confirmed its SongHash has no entry for it at all - so
+        vocals don't block the link. Within what's left, it is <strong>fully confirmed</strong> for
+        Guitar/Bass/Rhythm tracks from both <code>.chart</code> <em>and</em> <code>.mid</code> files, and for{' '}
+        <code>.mid</code>-format Drums - all end-to-end verified against a real multi-instrument{' '}
+        <code>.mid</code> capture (including working out exactly how a HOPO/forced marker authored only on the
+        Expert difficulty carries over to the other difficulties, and reverse-engineering the drum note/dynamics
+        encoding: kick/snare/cymbal-vs-tom lanes, ghost/accent velocity, double-kick, and drum-fill zones).{' '}
+        <code>.chart</code>-format Drums is also included, but as a best-effort port of the documented{' '}
+        <code>.chart</code> drum note format (note types for kick/red/yellow/blue/green, double-kick,
+        cymbal/ghost/accent modifiers, and the SP activation/fill phrase) - not independently verified against a
+        real capture the way everything else on this list is. For Keyboard and 6-Fret Guitar/Bass, the same
+        algorithm is applied but with an unverified instrument index.
       </p>
     </div>
   );
@@ -175,17 +217,62 @@ function GermanBody() {
         nicht darüber.
       </p>
       <p className="assumptions__caveat">
+        <strong>Die Schlagzeug-Wertung ist eine Best-Effort-Schätzung, nicht gegen echtes Gameplay verifiziert</strong>{' '}
+        (im Gegensatz zu allem oberhalb dieser Zeile). Sie nutzt dieselbe Combo-/Multiplikator-/Star-Power-Engine
+        wie Gitarre - jeder Schlagzeug-Treffer ist <strong>50 Punkte</strong> wert, genauso viel wie eine
+        Gitarren-Note. (Eine frühere Version dieser App nahm 25 an - die Hälfte einer Gitarren-Note, eine ältere
+        Konvention aus diesem Spiele-Genre - aber ein echter Platz-1-Score für ein Pro-Drums-Chart lag{' '}
+        <em>höher</em> als diese Schätzung, was für ein echtes Maximum nie passieren darf, weshalb die Annahme
+        korrigiert wurde.) Ein Doppel-Kick-Treffer (beide Pedale gleichzeitig) zählt für die Wertung als zwei
+        gleichzeitige Kick-Treffer, wie ein Akkord - unverifiziert, aber dadurch landet der berechnete Max-Score
+        knapp über statt unter diesem echten Score. Kein Clean-Play-Bonus (ein Gitarre-/Bass-spezifischer
+        Anschlag-Genauigkeits-Mechanismus ohne Schlagzeug-Äquivalent) und keine Sustain-Wertung
+        (Schlagzeug-Treffer sind immer punktuell). Cymbal-vs-Tom, Ghost Notes und Akzente werden im Highway
+        dargestellt, aber es wird angenommen, dass sie den Punktwert nicht verändern. Es gibt kein
+        Schlagzeug-Äquivalent zum Gitarren-Whammy, daher füllt sich die Star-Power-Leiste nur durch abgeschlossene
+        SP-Phrasen (je 25%); echte Schlagzeug-Star-Power wird durch das Spielen einer "Fill"-Zone aktiviert statt
+        manuell zu einem beliebigen Zeitpunkt - das ist nicht modelliert, die berechnete Aktivierungs-Flexibilität
+        kann daher etwas großzügiger sein als tatsächlich erreichbar. Den Schlagzeug-Max-Score als vernünftige
+        Schätzung betrachten, nicht als garantiert exakten Wert wie bei Gitarre/Bass.
+      </p>
+      <p className="assumptions__caveat">
+        <strong>Drums</strong> und <strong>Pro Drums</strong> werden als getrennte Instrumente angeboten, passend
+        zu Clone Heros eigenen Leaderboards - bestätigt durch den Vergleich echter Leaderboard-URLs für dasselbe
+        Chart: beide nutzen <em>exakt denselben</em> SongHash, nur die URL-Parameter <code>instrument</code> und{' '}
+        <code>controllerTypes</code> unterscheiden sich (<code>drums</code>/<code>5LaneDrums</code> vs.{' '}
+        <code>prodrums</code>/<code>7LaneDrums,5LaneDrums</code>). Diese App berechnet für beide identische
+        Chart-Daten und einen identischen Score - es gibt aktuell keinen Hinweis darauf, dass sich die
+        Wertungsformel zwischen den Modi unterscheidet, nur dass sich unterscheidet, welche Hardware echte
+        Spieler nutzen (und damit, was sie tatsächlich präzise treffen können).
+      </p>
+      <p className="assumptions__caveat">
         Der Link "Auf Clone Hero Leaderboards ansehen" rekonstruiert denselben Hash, den Clone Hero selbst zur
         Identifikation eines Charts auf <code>leaderboards.clonehero.net</code> berechnet - per Reverse Engineering
         aus dem Spielcode ermittelt und byte-genau gegen mehrere echte Leaderboard-Hashes verifiziert. Er erscheint
         nur, wenn zusätzlich eine <strong>song.ini</strong> hochgeladen wurde, da der Hash die Songlänge, das
-        Modchart-Flag und den Charter-Icon-Namen enthält - Werte, die sich aus einer{' '}
-        <code>.chart</code>-/<code>.mid</code>-Datei allein nicht zuverlässig bestimmen lassen. Innerhalb dessen
-        gilt das als <strong>vollständig bestätigt</strong> für Gitarre-/Bass-/Rhythmus-Spuren aus{' '}
-        <code>.chart</code>-Dateien. Für Keyboard, 6-Fret-Gitarre/-Bass und <code>.mid</code>-Charts wird derselbe
-        Algorithmus angewendet, jedoch mit Details (Instrument-Index, Standard-HOPO-Schwellenwert und
-        Sustain-Cutoff), die sich nicht gegen eine Live-Aufzeichnung verifizieren ließen - der erzeugte Link kann in
-        diesen Fällen falsch sein.
+        Modchart-Flag und den Charter-Icon-Namen enthält - Werte, die sich aus einer Chart-Datei allein nicht
+        zuverlässig bestimmen lassen. Direkt von einem Clone-Hero-Entwickler bestätigt: "there are some defaults
+        the game uses but it just means you will have random charts that are incorrect [...] because those ini
+        values that we do include change the parsed chart in some way" - selbst das Spiel selbst kann sich also
+        nicht zuverlässig auf Chart-only-Defaults verlassen, weshalb diese App es auch nicht versucht. Der Hash
+        enthält außerdem einen Eintrag für jedes gechartete <em>spielbare, gewertete</em> Instrument, das diese
+        App nicht parsen kann (Pro-Instrument-Spuren, 5-Lane-Schlagzeug) - hat die Datei welche, wird
+        der Link ausgeblendet, da er ohne sie nie korrekt rekonstruierbar wäre. Gesang (Lead und Harmonien) ist die
+        eine Ausnahme: Clone Hero unterstützt keine spielbare Gesangswertung (eine gechartete Gesangsspur steuert
+        nur den eingeblendeten Songtext) - ein echter Mitschnitt eines Charts mit gecharteter Gesangsspur
+        bestätigte, dass dessen SongHash gar keinen Eintrag dafür enthält. Gesang blockiert den Link also nicht.
+        Innerhalb dessen gilt das als <strong>vollständig bestätigt</strong> für
+        Gitarre-/Bass-/Rhythmus-Spuren sowohl aus <code>.chart</code>- <em>als auch</em> <code>.mid</code>-Dateien,
+        sowie für <code>.mid</code>-Schlagzeug - alles Ende-zu-Ende verifiziert an einem echten Mitschnitt eines
+        Mehrinstrumenten-<code>.mid</code>-Charts (inklusive der genauen Klärung, wie ein nur auf der
+        Expert-Schwierigkeit gesetzter HOPO-/Forced-Marker auf die anderen Schwierigkeiten durchschlägt, und der
+        vollständigen Entschlüsselung der Schlagzeug-Noten-/Dynamik-Kodierung: Kick/Snare/Cymbal-vs-Tom-Spuren,
+        Ghost-/Akzent-Velocity, Double-Kick und Fill-Zonen). <code>.chart</code>-Schlagzeug ist ebenfalls
+        enthalten, allerdings als Best-Effort-Portierung des dokumentierten <code>.chart</code>-Schlagzeug-Notenformats
+        (Notentypen für Kick/Rot/Gelb/Blau/Grün, Double-Kick, Cymbal-/Ghost-/Akzent-Modifikatoren und die
+        SP-Aktivierungs-/Fill-Phrase) - nicht unabhängig gegen einen echten Mitschnitt verifiziert wie alles andere
+        in dieser Liste. Für Keyboard und 6-Fret-Gitarre/-Bass wird derselbe Algorithmus angewendet, jedoch mit
+        unverifiziertem Instrument-Index.
       </p>
     </div>
   );

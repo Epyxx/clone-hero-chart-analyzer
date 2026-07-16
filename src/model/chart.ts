@@ -56,6 +56,37 @@ export interface InstrumentCharts {
   difficulties: Partial<Record<DifficultyTrack['difficulty'], DifficultyTrack>>;
 }
 
+/**
+ * Drums has a fundamentally different note/lane model than 5-fret/6-fret (kick + 4 pads,
+ * cymbal/tom + ghost/accent dynamics instead of chords/HOPO/tap), so it's represented
+ * separately from `InstrumentCharts` rather than forced into the guitar-shaped model. Only used
+ * for the leaderboard hash (`src/leaderboard/`) - not wired into scoring or the highway, which
+ * don't support drums.
+ */
+export interface DrumNoteEvent {
+  tick: number;
+  /** 0=kick, 1=red, 2=yellow, 3=blue, 4=green. */
+  lane: 0 | 1 | 2 | 3 | 4;
+  isDoubleKick: boolean;
+  /** Only meaningful for lanes 2-4 (yellow/blue/green): true = tom, false = cymbal. */
+  isCymbal: boolean;
+  isGhost: boolean;
+  isAccent: boolean;
+}
+
+export interface DrumFreestyleSection {
+  tick: number;
+  length: number;
+}
+
+export interface DrumDifficultyTrack {
+  difficulty: DifficultyTrack['difficulty'];
+  notes: DrumNoteEvent[];
+  starPower: StarPowerPhrase[];
+  solos: SoloSection[];
+  freestyle: DrumFreestyleSection[];
+}
+
 export interface ParsedChart {
   formatSource: 'chart' | 'mid';
   name?: string;
@@ -70,4 +101,14 @@ export interface ParsedChart {
   instruments: InstrumentCharts[];
   /** Length of the song in ticks (last event position, for display range). */
   lastTick: number;
+  /** Drums, if present and parseable (currently `.mid` only - see DrumDifficultyTrack). */
+  drums?: Partial<Record<DifficultyTrack['difficulty'], DrumDifficultyTrack>>;
+  /**
+   * Instrument identifiers found in the file that this app doesn't parse (e.g. "Drums" - not
+   * scoreable, no 5-fret/6-fret note lanes). Chart-format tracks other than the ones represented
+   * in `instruments` are silently skipped during parsing; this records what was skipped so
+   * features that need the *complete* instrument list (e.g. the leaderboard hash, which embeds
+   * every charted instrument) can detect when they'd be working from incomplete data.
+   */
+  unsupportedInstruments: string[];
 }

@@ -21,8 +21,6 @@ const DIFF_KEYS: Record<string, TranslationKey> = {
   diff_drums: 'diffLabel.diff_drums',
   diff_drums_real: 'diffLabel.diff_drums_real',
   diff_keys: 'diffLabel.diff_keys',
-  diff_vocals: 'diffLabel.diff_vocals',
-  diff_vocals_harm: 'diffLabel.diff_vocals_harm',
   diff_guitarghl: 'diffLabel.diff_guitarghl',
   diff_bassghl: 'diffLabel.diff_bassghl',
 };
@@ -45,7 +43,11 @@ export function SongMetaPanel({ chart, ini, albumArtUrl, stats }: Props) {
   const lengthSeconds = ini?.songLengthMs ? ini.songLengthMs / 1000 : stats.lengthSeconds;
   const bpmLabel = stats.bpmMin === stats.bpmMax ? `${Math.round(stats.bpmMin)}` : `${Math.round(stats.bpmMin)}–${Math.round(stats.bpmMax)}`;
 
-  const diffEntries = ini ? Object.entries(ini.difficulties).filter(([, v]) => v >= 0) : [];
+  // Vocals aren't a playable/scored instrument in Clone Hero (lyrics display only), so they're
+  // dropped entirely rather than shown as a rating badge alongside real instruments.
+  const diffEntries = ini
+    ? Object.entries(ini.difficulties).filter(([k, v]) => v >= 0 && k !== 'diff_vocals' && k !== 'diff_vocals_harm')
+    : [];
 
   return (
     <div className="song-meta">

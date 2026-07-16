@@ -8,29 +8,45 @@ export const DIFFICULTY_ORDER = ['Expert', 'Hard', 'Medium', 'Easy'] as const;
 export type LeaderboardDifficulty = (typeof DIFFICULTY_ORDER)[number];
 
 /**
- * Instrument indices as used inside the hash. Only `guitar` (index 0) has been verified
- * against a real leaderboard hash; the rest follow Clone Hero's own track-name ordering
- * (mirrored from the community's `scan-chart` tool) but are unconfirmed - see AssumptionsPanel.
+ * Instrument indices as used inside the hash. `guitar` (0), `bass` (3), and `drums` (4) are
+ * verified against real leaderboard hashes; the rest follow Clone Hero's own track-name
+ * ordering (mirrored from the community's `scan-chart` tool) but are unconfirmed - see
+ * AssumptionsPanel.
  */
 export const INSTRUMENT_INDEX: Record<string, number> = {
   Single: 0, // guitar
   DoubleGuitar: 1, // guitarcoop
   DoubleRhythm: 2, // rhythm
   DoubleBass: 3, // bass
-  Keyboard: 5, // keys (4 = drums, unsupported by this app)
+  Keyboard: 5, // keys
   GHLGuitar: 6, // guitarghl
   GHLBass: 9, // bassghl
 };
 
-/** Query-string instrument name for the leaderboard URL (UI filter only, not part of the hash). */
-export const INSTRUMENT_QUERY_NAME: Record<string, string> = {
-  Single: 'guitar',
-  DoubleGuitar: 'guitarcoop',
-  DoubleRhythm: 'rhythm',
-  DoubleBass: 'bass',
-  Keyboard: 'keys',
-  GHLGuitar: 'guitarghl',
-  GHLBass: 'bassghl',
+/** Drums doesn't fit the guitar-shaped `instruments` array (see DrumDifficultyTrack), so it's
+ * handled as its own entry point rather than through `INSTRUMENT_INDEX`. "Drums" and "Pro Drums"
+ * embed the exact same TrackHash data (same notes, same flags) - confirmed by comparing real
+ * leaderboard URLs for the same song: identical hash, only `instrument` and `controllerTypes`
+ * differ. They're offered as separate selectable instruments in the UI (matching how Clone
+ * Hero's own leaderboard treats them) even though this app computes one identical entry for
+ * both. */
+export const DRUMS_INSTRUMENT_INDEX = 4;
+
+/**
+ * Query-string instrument name AND the `controllerTypes` filter value for the leaderboard URL
+ * (UI filters only, not part of the hash). Confirmed for `guitar`/`drums`/`prodrums` via real
+ * leaderboard URLs; the rest follow the same naming pattern but are unconfirmed.
+ */
+export const LEADERBOARD_QUERY: Record<string, { queryName: string; controllerTypes: string }> = {
+  Single: { queryName: 'guitar', controllerTypes: '5Fret' },
+  DoubleGuitar: { queryName: 'guitarcoop', controllerTypes: '5Fret' },
+  DoubleRhythm: { queryName: 'rhythm', controllerTypes: '5Fret' },
+  DoubleBass: { queryName: 'bass', controllerTypes: '5Fret' },
+  Keyboard: { queryName: 'keys', controllerTypes: '5Fret' },
+  GHLGuitar: { queryName: 'guitarghl', controllerTypes: '6Fret' },
+  GHLBass: { queryName: 'bassghl', controllerTypes: '6Fret' },
+  Drums: { queryName: 'drums', controllerTypes: '5LaneDrums' },
+  ProDrums: { queryName: 'prodrums', controllerTypes: '7LaneDrums,5LaneDrums' },
 };
 
 function u32(n: number): Uint8Array {

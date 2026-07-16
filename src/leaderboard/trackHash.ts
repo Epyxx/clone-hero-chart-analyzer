@@ -35,24 +35,26 @@ function sameSingleNoteShape(a: NoteEvent, b: NoteEvent): boolean {
 /**
  * Natural-HOPO determination, matching Clone Hero's own rules (confirmed via live
  * debugging): gap-to-previous-note, current-is-chord, and same-single-note-as-previous
- * all force a strum; a `.mid`-only exception (previous chord, current note contained in
- * it) is not modeled here since it only affects .mid parsing specifics not otherwise
- * replicated by this module (see caveat in AssumptionsPanel).
+ * all force a strum. `.mid`-only exception: if the previous note was a chord and the
+ * current single note's fret was part of that chord, it's also forced to a strum (this
+ * only manifested as a bug for multi-instrument `.mid` charts with chords - see the
+ * verification note in AssumptionsPanel).
  */
-function isNaturalHopo(prev: NoteEvent | null, current: NoteEvent, hopoThresholdTicks: number): boolean {
+function isNaturalHopo(prev: NoteEvent | null, current: NoteEvent, hopoThresholdTicks: number, format: 'chart' | 'mid'): boolean {
   if (!prev) return false;
   if (current.tick - prev.tick > hopoThresholdTicks) return false;
   if (isChordNote(current)) return false;
   if (!isChordNote(prev) && sameSingleNoteShape(prev, current)) return false;
+  if (format === 'mid' && isChordNote(prev) && !current.isOpen && prev.frets.includes(current.frets[0])) return false;
   return true;
 }
 
-function resolveNotes(notes: NoteEvent[], hopoThresholdTicks: number, sustainCutoffTicks: number): ResolvedNote[] {
+function resolveNotes(notes: NoteEvent[], hopoThresholdTicks: number, sustainCutoffTicks: number, format: 'chart' | 'mid'): ResolvedNote[] {
   const trim = (length: number) => (length <= sustainCutoffTicks ? 0 : length);
   const out: ResolvedNote[] = [];
   let prev: NoteEvent | null = null;
   for (const note of notes) {
-    const natural = isNaturalHopo(prev, note, hopoThresholdTicks);
+    const natural = isNaturalHopo(prev, note, hopoThresholdTicks, format);
     const flags = note.isTap ? FLAG_TAP : (note.isForced ? !natural : natural) ? FLAG_HOPO : FLAG_STRUM;
 
     if (note.isOpen) {
@@ -125,7 +127,7 @@ function computeSustainCutoffTicks(resolution: number, format: 'chart' | 'mid', 
 export function buildTrackHashBuffer(input: TrackHashInput): Uint8Array {
   const hopoThresholdTicks = computeHopoThresholdTicks(input.resolution, input.format, input.hopoFrequency, input.eighthNoteHopo);
   const sustainCutoffTicks = computeSustainCutoffTicks(input.resolution, input.format, input.sustainCutoffThreshold);
-  const resolvedNotes = resolveNotes(input.track.notes, hopoThresholdTicks, sustainCutoffTicks);
+  const resolvedNotes = resolveNotes(input.track.notes, hopoThresholdTicks, sustainCutoffTicks, input.format);
   const tempos = dedupTemposByTick(input.tempos);
   const timeSigs = dedupTimeSigsByTick(input.timeSigs);
   const starPower = pruneEmptyPhrases(input.track.starPower, resolvedNotes);

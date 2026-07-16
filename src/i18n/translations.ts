@@ -22,6 +22,8 @@ const en = {
   'instrument.Keyboard': 'Keyboard',
   'instrument.GHLGuitar': 'Guitar (6-Fret)',
   'instrument.GHLBass': 'Bass (6-Fret)',
+  'instrument.Drums': 'Drums',
+  'instrument.ProDrums': 'Pro Drums',
 
   'songMeta.unknownTitle': 'Unknown song title',
   'songMeta.albumArtAlt': 'Album Art',
@@ -49,8 +51,6 @@ const en = {
   'diffLabel.diff_drums': 'Drums',
   'diffLabel.diff_drums_real': 'Pro Drums',
   'diffLabel.diff_keys': 'Keyboard',
-  'diffLabel.diff_vocals': 'Vocals',
-  'diffLabel.diff_vocals_harm': 'Vocals (Harmony)',
   'diffLabel.diff_guitarghl': 'Guitar (6-Fret)',
   'diffLabel.diff_bassghl': 'Bass (6-Fret)',
 
@@ -73,6 +73,12 @@ const en = {
   'legend.hopo': 'HOPO',
   'legend.tap': 'Tap',
   'legend.open': 'Open',
+  'legend.cymbal': 'Cymbal',
+  'legend.tom': 'Tom',
+  'legend.ghost': 'Ghost',
+  'legend.accent': 'Accent',
+  'legend.kick': 'Kick',
+  'legend.doubleKick': 'Double kick',
 
   'highway.points': '{{n}} pts',
   'highway.measureShort': 'Measure {{n}}',
@@ -114,6 +120,8 @@ const de = {
   'instrument.Keyboard': 'Keyboard',
   'instrument.GHLGuitar': 'Gitarre (6-Fret)',
   'instrument.GHLBass': 'Bass (6-Fret)',
+  'instrument.Drums': 'Schlagzeug',
+  'instrument.ProDrums': 'Pro-Schlagzeug',
 
   'songMeta.unknownTitle': 'Unbekannter Songtitel',
   'songMeta.albumArtAlt': 'Album-Cover',
@@ -141,8 +149,6 @@ const de = {
   'diffLabel.diff_drums': 'Schlagzeug',
   'diffLabel.diff_drums_real': 'Pro-Schlagzeug',
   'diffLabel.diff_keys': 'Keyboard',
-  'diffLabel.diff_vocals': 'Gesang',
-  'diffLabel.diff_vocals_harm': 'Gesang (Harmonie)',
   'diffLabel.diff_guitarghl': 'Gitarre (6-Fret)',
   'diffLabel.diff_bassghl': 'Bass (6-Fret)',
 
@@ -165,6 +171,12 @@ const de = {
   'legend.hopo': 'HOPO',
   'legend.tap': 'Tap',
   'legend.open': 'Open',
+  'legend.cymbal': 'Becken',
+  'legend.tom': 'Tom',
+  'legend.ghost': 'Ghost Note',
+  'legend.accent': 'Akzent',
+  'legend.kick': 'Kick',
+  'legend.doubleKick': 'Doppel-Kick',
 
   'highway.points': '{{n}} Punkte',
   'highway.measureShort': 'Takt {{n}}',

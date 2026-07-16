@@ -1,5 +1,6 @@
 import type {
   DifficultyTrack,
+  DrumDifficultyTrack,
   Fret,
   InstrumentCharts,
   NoteEvent,
@@ -10,6 +11,7 @@ import type {
   TimeSigEvent,
 } from '../model/chart';
 import { resolveHopos } from './hopo';
+import { parseDrumTrack } from './midDrumParser';
 
 const TRACK_NAME_TO_INSTRUMENT: Record<string, string> = {
   'PART GUITAR': 'Single',
@@ -19,6 +21,9 @@ const TRACK_NAME_TO_INSTRUMENT: Record<string, string> = {
   'PART KEYS': 'Keyboard',
   'T1 GEMS': 'Single', // very old RB1-era naming fallback
 };
+
+/** Lead/harmony vocals - lyrics-display only, not a playable/scored instrument in Clone Hero. */
+const NON_SCOREABLE_TRACKS = /^PART (VOCALS|HARM[123]?)$/i;
 
 const DIFF_BASE_NOTES: { difficulty: DifficultyTrack['difficulty']; base: number }[] = [
   { difficulty: 'Easy', base: 60 },
@@ -144,6 +149,62 @@ function readTrack(reader: ByteReader): MidiEvent[] {
   return events;
 }
 
+/**
+ * Forced/tap marker resolution (confirmed against real leaderboard hash captures - see
+ * AssumptionsPanel):
+ * - base+6 always means "forced" (flips the natural strum/HOPO determination).
+ * - base+5 means "tap" when its range spans more than one note - a genuine tap *section* - but
+ *   when it spans exactly one note (a ~30-tick blip matching just that note's own duration) it
+ *   behaves like "forced" instead: a single isolated tap note is mechanically indistinguishable
+ *   from a forced HOPO, and the game appears to resolve it the same way.
+ * - A tap *section* (base+5, multi-note range) is only ever authored on the Expert difficulty,
+ *   but applies to every difficulty of the track - i.e. it cascades to a lower difficulty
+ *   wherever that difficulty has no local marker of its own at the same tick. Single-note
+ *   "forced" blips (whether base+5 or base+6) never cascade - they only affect the difficulty
+ *   that owns them.
+ */
+const EXPERT_BASE = 96;
+const SINGLE_NOTE_MARKER_TICKS = 100; // longer than any real single-note blip, shorter than any real tap section
+
+type MarkerRange = { start: number; end: number; kind: 'five' | 'six' };
+
+function collectMarkerRanges(events: MidiEvent[], base: number): MarkerRange[] {
+  const active = new Map<number, number>();
+  const ranges: MarkerRange[] = [];
+  for (const ev of events) {
+    if (ev.type === 'noteOn') {
+      active.set(ev.note!, ev.tick);
+    } else if (ev.type === 'noteOff') {
+      const start = active.get(ev.note!);
+      if (start === undefined) continue;
+      active.delete(ev.note!);
+      if (ev.note === base + 5) ranges.push({ start, end: ev.tick, kind: 'five' });
+      else if (ev.note === base + 6) ranges.push({ start, end: ev.tick, kind: 'six' });
+    }
+  }
+  return ranges;
+}
+
+function resolveMarker(tick: number, ownRanges: MarkerRange[], expertRanges: MarkerRange[], isExpert: boolean): { isForced: boolean; isTap: boolean } {
+  // A cascaded tap *section* takes priority over a same-tick single-note "forced" blip (own or
+  // cascaded) - the section reflects deliberate authoring across the whole passage, while a
+  // coincidental short marker inside it doesn't override that (confirmed via real captures: a
+  // difficulty's own short blip landing inside Expert's long tap span still resolves as tap).
+  if (!isExpert) {
+    const cascaded = expertRanges.find(
+      (r) => r.kind === 'five' && r.end - r.start > SINGLE_NOTE_MARKER_TICKS && tick >= r.start && tick < r.end,
+    );
+    if (cascaded) return { isForced: false, isTap: true };
+  }
+  const own = ownRanges.find((r) => tick >= r.start && tick < r.end);
+  if (own) {
+    if (own.kind === 'six') return { isForced: true, isTap: false };
+    const isSection = own.end - own.start > SINGLE_NOTE_MARKER_TICKS;
+    return isSection ? { isForced: false, isTap: true } : { isForced: true, isTap: false };
+  }
+  return { isForced: false, isTap: false };
+}
+
 function buildDifficultyTrack(
   events: MidiEvent[],
   difficulty: DifficultyTrack['difficulty'],
@@ -152,14 +213,13 @@ function buildDifficultyTrack(
   enhancedOpens: boolean,
   starPowerNote: number,
   sustainCutoffThreshold: number,
+  ownMarkerRanges: MarkerRange[],
+  expertMarkerRanges: MarkerRange[],
 ): DifficultyTrack {
   const noteMap = new Map<number, NoteEvent>();
   const active = new Map<number, number>(); // note number -> start tick
   const starPowerRanges: StarPowerPhrase[] = [];
   const solos: SoloSection[] = [];
-
-  const forcedRanges: { start: number; end: number }[] = [];
-  const tapRanges: { start: number; end: number }[] = [];
 
   for (const ev of events) {
     if (ev.type === 'noteOn') {
@@ -178,13 +238,8 @@ function buildDifficultyTrack(
         solos.push({ tick: start, length: ev.tick - start });
         continue;
       }
-      if (note === base + 5) {
-        forcedRanges.push({ start, end: ev.tick });
-        continue;
-      }
-      if (note === base + 6) {
-        tapRanges.push({ start, end: ev.tick });
-        continue;
+      if (note === base + 5 || note === base + 6) {
+        continue; // handled separately by collectMarkerRanges/resolveMarker
       }
       if (!enhancedOpens && note === base - 1) {
         // legacy open note representation without ENHANCED_OPENS, ignore (rare)
@@ -221,9 +276,11 @@ function buildDifficultyTrack(
   }
 
   const notes = Array.from(noteMap.values()).sort((a, b) => a.tick - b.tick);
+  const isExpert = base === EXPERT_BASE;
   for (const n of notes) {
-    if (forcedRanges.some((r) => n.tick >= r.start && n.tick < r.end)) n.isForced = true;
-    if (tapRanges.some((r) => n.tick >= r.start && n.tick < r.end)) n.isTap = true;
+    const { isForced, isTap } = resolveMarker(n.tick, ownMarkerRanges, expertMarkerRanges, isExpert);
+    n.isForced = isForced;
+    n.isTap = isTap;
   }
 
   starPowerRanges.sort((a, b) => a.tick - b.tick);
@@ -287,6 +344,8 @@ export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {})
   timeSigs.sort((a, b) => a.tick - b.tick);
 
   const instruments: InstrumentCharts[] = [];
+  const unsupportedInstruments = new Set<string>();
+  let drums: Partial<Record<DrumDifficultyTrack['difficulty'], DrumDifficultyTrack>> | undefined;
   let lastTick = 0;
   let songName: string | undefined;
 
@@ -294,12 +353,36 @@ export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {})
     const nameEvent = track.find((e) => e.type === 'trackName');
     const trackName = nameEvent?.text?.trim();
     if (!trackName) continue;
-    if (trackName === 'Ratatata' || (!songName && track === tracks[0])) {
+    if (!songName && track === tracks[0]) {
       // first track name in format-1 files is conventionally the song/sequence name
       if (!TRACK_NAME_TO_INSTRUMENT[trackName]) songName = trackName;
     }
+    if (trackName === 'PART DRUMS') {
+      const parsed = parseDrumTrack(track);
+      if (Object.keys(parsed).length > 0) {
+        drums = parsed;
+        for (const diffTrack of Object.values(parsed)) {
+          for (const n of diffTrack!.notes) lastTick = Math.max(lastTick, n.tick);
+          for (const s of diffTrack!.starPower) lastTick = Math.max(lastTick, s.tick + s.length);
+        }
+      }
+      continue;
+    }
+    if (NON_SCOREABLE_TRACKS.test(trackName)) {
+      // Clone Hero doesn't support playable/scored vocals - lead or harmony vocal tracks only
+      // ever drive the on-screen scrolling lyrics. Confirmed via a real leaderboard hash capture
+      // of a chart with a charted "PART VOCALS" track (song.ini `diff_vocals` >= 0): the
+      // resulting SongHash's entry list had no vocals entry at all, so - unlike every other
+      // unparsed "PART ..." track - this one doesn't need to block the leaderboard link.
+      continue;
+    }
     const instrumentKey = TRACK_NAME_TO_INSTRUMENT[trackName];
-    if (!instrumentKey) continue;
+    if (!instrumentKey) {
+      // Any other "PART ..." track (pro-instrument tracks, GHL rhythm/co-op, ...) is a real,
+      // charted instrument this app doesn't parse - see ParsedChart.unsupportedInstruments.
+      if (/^PART /i.test(trackName)) unsupportedInstruments.add(trackName);
+      continue;
+    }
 
     const enhancedOpens = track.some(
       (e) => e.type === 'text' && /ENHANCED_OPENS/i.test(e.text ?? ''),
@@ -315,8 +398,10 @@ export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {})
       if (!hasModernSp && hasSoloMarkers) effectiveStarPowerNote = SOLO_NOTE;
     }
 
+    const expertMarkerRanges = collectMarkerRanges(track, EXPERT_BASE);
     const difficulties: InstrumentCharts['difficulties'] = {};
     for (const { difficulty, base } of DIFF_BASE_NOTES) {
+      const ownMarkerRanges = base === EXPERT_BASE ? expertMarkerRanges : collectMarkerRanges(track, base);
       const diffTrack = buildDifficultyTrack(
         track,
         difficulty,
@@ -325,6 +410,8 @@ export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {})
         enhancedOpens,
         effectiveStarPowerNote,
         sustainCutoffThreshold,
+        ownMarkerRanges,
+        expertMarkerRanges,
       );
       if (diffTrack.notes.length > 0) difficulties[difficulty] = diffTrack;
       for (const n of diffTrack.notes) lastTick = Math.max(lastTick, n.tick + n.length);
@@ -343,5 +430,7 @@ export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {})
     timeSigs,
     instruments,
     lastTick,
+    unsupportedInstruments: Array.from(unsupportedInstruments),
+    drums,
   };
 }
