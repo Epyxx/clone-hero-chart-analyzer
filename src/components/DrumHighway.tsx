@@ -4,6 +4,7 @@ import type { DrumDifficultyTrack } from '../model/chart';
 import type { TimingMap } from '../model/timing';
 import type { Activation } from '../scoring/optimizer';
 import { ScoreRangeIndex, DRUM_SOLO_BONUS_PER_NOTE } from '../scoring/score';
+import type { DrumScoreModifier } from '../scoring/drumAdapter';
 import { formatDuration } from '../model/stats';
 import { useLanguage } from '../i18n/LanguageContext';
 
@@ -24,6 +25,7 @@ interface Props {
   usedPhraseIndices: Set<number>;
   scoreIndex: ScoreRangeIndex;
   pxPerTick: number;
+  modifier?: DrumScoreModifier;
 }
 
 function starPoints(cx: number, cy: number, outerR: number, innerR: number): string {
@@ -55,7 +57,7 @@ function upperBound(sorted: number[], value: number): number {
   return lo;
 }
 
-export function DrumHighway({ track, timing, lastTick, activations, usedPhraseIndices, scoreIndex, pxPerTick }: Props) {
+export function DrumHighway({ track, timing, lastTick, activations, usedPhraseIndices, scoreIndex, pxPerTick, modifier = 'none' }: Props) {
   const { t, locale } = useLanguage();
   const width = Math.max(800, lastTick * pxPerTick + 200);
   const height = TOP_MARGIN + LANE_COUNT * (LANE_HEIGHT + LANE_GAP) + BOTTOM_MARGIN;
@@ -234,13 +236,19 @@ export function DrumHighway({ track, timing, lastTick, activations, usedPhraseIn
         const opacity = note.isGhost ? 0.5 : 1;
 
         if (note.lane === 0) {
+          // "No Kick" strips every kick note from scoring entirely - don't render it either.
+          if (modifier === 'noKick') return null;
           // Kick spans the full width of the highway, like an Open note on guitar - it's not
-          // tied to any single pad lane.
-          const barOpacity = note.isDoubleKick ? 1 : opacity;
+          // tied to any single pad lane. The white outline marks an "Expert+"/2x-kick alternate
+          // note that's only actually scored under the "Double Kick" modifier - render it as a
+          // normal kick (no outline) when that modifier is selected, since it's scored the same
+          // as any other kick note then.
+          const showAsUnscoredDoubleKick = note.isDoubleKick && modifier !== 'doubleKick';
+          const barOpacity = showAsUnscoredDoubleKick ? 1 : opacity;
           return (
             <g key={i}>
               <rect x={x - 4} y={kickY} width={8} height={kickHeight} fill={KICK_COLOR} opacity={barOpacity} rx={2} />
-              {note.isDoubleKick && (
+              {showAsUnscoredDoubleKick && (
                 <rect x={x - 4} y={kickY} width={8} height={kickHeight} fill="none" stroke="#ffffff" strokeWidth={1.5} rx={2} />
               )}
               {isStarPower && (

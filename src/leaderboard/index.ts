@@ -91,16 +91,17 @@ export function computeLeaderboardHash(chart: ParsedChart, ini: SongIni | null, 
  * Builds a `leaderboards.clonehero.net` URL for a specific instrument+difficulty, given a hash
  * from `computeLeaderboardHash`. `instrumentKey` is this app's internal instrument id (e.g.
  * `Single`, `DoubleBass`, `Drums`, `ProDrums`) - returns `null` for an id with no known
- * leaderboard query mapping.
+ * leaderboard query mapping. `modifiers` is a Clone Hero score-modifier id (e.g. `doubleKick`,
+ * `noKick`) - omit for the unmodified leaderboard.
  */
-export function buildLeaderboardUrl(hash: string, instrumentKey: string, difficulty: string): string | null {
+export function buildLeaderboardUrl(hash: string, instrumentKey: string, difficulty: string, modifiers = ''): string | null {
   const query = LEADERBOARD_QUERY[instrumentKey];
   if (!query) return null;
   const params = new URLSearchParams({
     instrument: query.queryName,
     difficulty: difficulty.toLowerCase(),
     controllerTypes: query.controllerTypes,
-    modifiers: '',
+    modifiers,
     minSpeed: '100',
     maxSpeed: '120',
     sort: 'score',

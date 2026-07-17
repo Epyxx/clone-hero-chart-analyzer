@@ -20,6 +20,23 @@ export interface NoteEvent {
   isTap: boolean;
   /** Resolved after parsing: true if this note is hit as a hammer-on/pull-off. */
   isHopo: boolean;
+  /**
+   * Per-fret point-value override, parallel to `frets` (same index order) - lets a chord mix
+   * different point values per fret. Absent for guitar/bass (every fret is worth the engine's
+   * flat `pointsPerNote`). Used by drums: a real leaderboard score breakdown showed cymbal hits
+   * are worth 65 points versus 50 for kick/snare/tom - see drumAdapter.ts.
+   */
+  fretPoints?: number[];
+  /**
+   * Per-fret flat, unmultiplied bonus, parallel to `frets` (same index order) - added to
+   * `cleanPlayBonus` instead of the engine's flat `cleanPlayBonusPerNote` when present. Absent
+   * for guitar/bass. Used by drums: a real leaderboard score's total didn't match the sum of its
+   * own displayed breakdown fields whenever `ghostsHit`/`accentsHit` were nonzero, by exactly 50
+   * points per such hit across every real example checked - a bonus for playing a ghost/accent
+   * note's dynamic correctly, present in the total but not broken out in any named field. See
+   * drumAdapter.ts.
+   */
+  fretCleanPlayBonus?: number[];
 }
 
 export interface StarPowerPhrase {

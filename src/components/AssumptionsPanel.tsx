@@ -79,20 +79,63 @@ function EnglishBody() {
         from top players can come in just under it, but never above.
       </p>
       <p className="assumptions__caveat">
-        <strong>Drums scoring is a best-effort estimate, not verified against real gameplay</strong> (everything
-        above this line is). It reuses the same combo/multiplier/Star Power engine as guitar - each drum hit is
-        worth <strong>50 points</strong>, the same as a guitar note. (An earlier version of this app assumed 25 -
-        half of guitar's value, an older convention from this game genre - but a real #1 leaderboard score for a
-        Pro Drums chart came in <em>higher</em> than that estimate, which can never happen for a true maximum, so
-        the assumption was revised.) A double-kick hit (both pedals at once) counts as two simultaneous kick hits
-        for scoring, same as a chord - unverified, but this is what makes the calculated max land just above that
-        real score rather than below it. No clean-play bonus (a guitar/bass strum-accuracy mechanic with no drum
-        equivalent) and no sustain scoring (drum hits are always instantaneous). Cymbal-vs-tom, ghost notes, and
-        accents are rendered on the highway but assumed not to change the point value. There is no drum equivalent
-        of guitar's whammy, so Star Power gauge fill comes only from completing SP phrases (25% each); real drum
-        Star Power is activated by playing through a "fill" zone rather than manually at any moment, which isn't
-        modeled - the calculated activation timing may be slightly more flexible than what's actually achievable.
-        Treat the drum max score as a reasonable estimate, not a guaranteed exact figure the way guitar/bass is.
+        <strong>Drums scoring is a best-effort estimate, not verified the byte-exact way everything above this
+        line is</strong> - but its point values ARE checked against real leaderboard scores' own point
+        breakdowns, pulled directly from Clone Hero's public score API (which exposes fields like{' '}
+        <code>noteScore</code>, <code>comboScore</code>, <code>spScore</code>, <code>ghostsHit</code>,{' '}
+        <code>accentsHit</code> per score - much more precise than the score details shown in the website's UI).
+        It reuses the same combo/multiplier/Star Power engine as guitar. Kick, snare, and tom hits are worth{' '}
+        <strong>50 points</strong>, the same as a guitar note. (An earlier version of this app assumed 25 - half
+        of guitar's value, an older convention from this game genre - but a real #1 leaderboard score for a Pro
+        Drums chart came in <em>higher</em> than that estimate, which can never happen for a true maximum, so the
+        assumption was raised to 50.) <strong>Cymbal hits are worth 65 points</strong> - found by decomposing a
+        real #1 score's exact <code>noteScore</code> value: for a chart with 969 non-cymbal and 570 cymbal notes,
+        that value (85,450, for a run that missed exactly 1 non-cymbal note) only balances at 50 and 65
+        respectively, to the exact point. <strong>Ghost/accent notes hit with the correct dynamic score an extra
+        flat, unmultiplied 50 points each</strong> - found because 5 of 6 real scores with a nonzero{' '}
+        <code>ghostsHit</code>/<code>accentsHit</code> count had a <code>totalScore</code> that exceeded the sum
+        of every one of their own named breakdown fields by <em>exactly</em> 50 points per such hit (the 6th was
+        internally inconsistent in an unrelated way - its <code>comboScore</code> field read 0 despite a large
+        max combo, so it was treated as a bad record). This bonus isn't broken out under any named field - not
+        even the confusingly similarly-named <code>ghostScore</code>, which reads 0 in every real example checked
+        regardless of <code>ghostsHit</code> count - it only shows up as a gap between the total and the sum of
+        the parts. With cymbal points, the ghost/accent bonus, and the "Expert+"/2x-kick exclusion (below)
+        combined, the calculated full-combo max for that same real chart lands comfortably above the real
+        near-full-combo score that missed only 1 of 1,539 notes - the expected pattern, and the strongest evidence
+        yet this formula is close to correct. No clean-play bonus beyond that (a guitar/bass strum-accuracy
+        mechanic with no direct drum equivalent) and no sustain scoring (drum hits are always instantaneous).
+        There is no drum equivalent of guitar's whammy, so Star Power gauge fill comes only from completing SP
+        phrases (25% each); real drum Star Power is activated by playing through a "fill" zone rather than
+        manually at any moment, which isn't modeled - the calculated activation timing may be slightly more
+        flexible than what's actually achievable. Solo bonus is still unconfirmed either way (guitar's value,
+        carried over) since no drum chart with a solo section has been checked against a real score yet. Treat
+        the drum max score as a well-reasoned estimate, not a guaranteed exact figure the way guitar/bass is.
+      </p>
+      <p className="assumptions__caveat">
+        <strong>"Expert+" / 2x-kick notes</strong> (an alternate kick note that lets a fast section be played with
+        a second pedal instead of one) are charted on top of the regular Expert pattern but are{' '}
+        <em>not part of the default chart</em>: a real leaderboard capture confirmed Clone Hero excludes them
+        entirely from the default note count and every real player's accuracy denominator (the game shows 1,539
+        notes for a chart this app parses as 1,631 raw hits - a gap of exactly 92, matching its count of these
+        alternate-kick notes one for one). They only become playable under a separate, alternate leaderboard -
+        Clone Hero has a distinct <strong>"Double Kick" score modifier</strong> with its own disjoint set of
+        players and its own (lower, on the one real example checked) top scores, confirming these notes are an
+        opt-in variant ruleset rather than bonus content within the normal chart. (An earlier version of this app
+        instead scored them as two simultaneous kick hits under the default ruleset, reasoning that real
+        leaderboard scores implied they must count for something - that reasoning turned out to conflate the
+        modifier's alternate leaderboard with the default one, and has been reverted.)
+      </p>
+      <p className="assumptions__caveat">
+        Drums and Pro Drums get a <strong>Modifier</strong> selector for the two Clone Hero score modifiers
+        confirmed (via its real score API) to change the scored note set - selecting{' '}
+        <strong>"Double Kick"</strong> includes the "Expert+" notes above as regular kick hits;{' '}
+        <strong>"No Kick"</strong> removes every kick-lane note entirely, confirmed against a real chart's exact
+        numbers: its note count dropped by precisely its kick-note count, and its reference max score dropped by
+        precisely that count × 50 points. Clone Hero has roughly 20 score modifiers in total (mirrored
+        highway, precision timing windows, forced HOPOs, etc.) - the rest are player/assist settings with no
+        evidence they change the note set or point values, so they aren't offered here, and Guitar/Bass don't get
+        a modifier selector at all for the same reason. The "View on Clone Hero Leaderboards" link's{' '}
+        <code>modifiers</code> parameter follows whichever one is selected.
       </p>
       <p className="assumptions__caveat">
         <strong>Drums</strong> and <strong>Pro Drums</strong> are offered as separate instruments, matching Clone
@@ -102,7 +145,12 @@ function EnglishBody() {
         <code>prodrums</code>/<code>7LaneDrums,5LaneDrums</code>). This app computes identical chart data and an
         identical calculated score for both - there's currently no evidence the underlying scoring formula itself
         differs between the two modes, only that real players' hardware (and therefore what they can accurately
-        hit) does.
+        hit) does. In practice, on a real chart checked against the live leaderboard, the plain{' '}
+        <strong>Drums</strong> leaderboard had a single old submission while every other player - regardless of
+        which "Instrument" they picked in-game, real kit or 5-lane-compatible controller alike - showed up under{' '}
+        <strong>Pro Drums</strong> instead, with the controller type as just a filter within that one leaderboard;
+        Clone Hero's actual in-game instrument/controller selection doesn't appear to map onto this split as cleanly
+        as the query parameters alone suggest, so the "Pro Drums" link is the one worth checking first.
       </p>
       <p className="assumptions__caveat">
         The "View on Clone Hero Leaderboards" link reconstructs the same hash Clone Hero itself computes to identify
@@ -217,23 +265,73 @@ function GermanBody() {
         nicht darüber.
       </p>
       <p className="assumptions__caveat">
-        <strong>Die Schlagzeug-Wertung ist eine Best-Effort-Schätzung, nicht gegen echtes Gameplay verifiziert</strong>{' '}
-        (im Gegensatz zu allem oberhalb dieser Zeile). Sie nutzt dieselbe Combo-/Multiplikator-/Star-Power-Engine
-        wie Gitarre - jeder Schlagzeug-Treffer ist <strong>50 Punkte</strong> wert, genauso viel wie eine
-        Gitarren-Note. (Eine frühere Version dieser App nahm 25 an - die Hälfte einer Gitarren-Note, eine ältere
-        Konvention aus diesem Spiele-Genre - aber ein echter Platz-1-Score für ein Pro-Drums-Chart lag{' '}
-        <em>höher</em> als diese Schätzung, was für ein echtes Maximum nie passieren darf, weshalb die Annahme
-        korrigiert wurde.) Ein Doppel-Kick-Treffer (beide Pedale gleichzeitig) zählt für die Wertung als zwei
-        gleichzeitige Kick-Treffer, wie ein Akkord - unverifiziert, aber dadurch landet der berechnete Max-Score
-        knapp über statt unter diesem echten Score. Kein Clean-Play-Bonus (ein Gitarre-/Bass-spezifischer
-        Anschlag-Genauigkeits-Mechanismus ohne Schlagzeug-Äquivalent) und keine Sustain-Wertung
-        (Schlagzeug-Treffer sind immer punktuell). Cymbal-vs-Tom, Ghost Notes und Akzente werden im Highway
-        dargestellt, aber es wird angenommen, dass sie den Punktwert nicht verändern. Es gibt kein
-        Schlagzeug-Äquivalent zum Gitarren-Whammy, daher füllt sich die Star-Power-Leiste nur durch abgeschlossene
-        SP-Phrasen (je 25%); echte Schlagzeug-Star-Power wird durch das Spielen einer "Fill"-Zone aktiviert statt
-        manuell zu einem beliebigen Zeitpunkt - das ist nicht modelliert, die berechnete Aktivierungs-Flexibilität
-        kann daher etwas großzügiger sein als tatsächlich erreichbar. Den Schlagzeug-Max-Score als vernünftige
-        Schätzung betrachten, nicht als garantiert exakten Wert wie bei Gitarre/Bass.
+        <strong>
+          Die Schlagzeug-Wertung ist eine Best-Effort-Schätzung, nicht byte-genau verifiziert wie alles oberhalb
+          dieser Zeile
+        </strong>{' '}
+        - aber ihre Punktwerte sind gegen die eigene Punkte-Aufschlüsselung echter Bestenlisten-Scores geprüft,
+        direkt aus Clone Heros öffentlicher Score-API geholt (die Felder wie <code>noteScore</code>,{' '}
+        <code>comboScore</code>, <code>spScore</code>, <code>ghostsHit</code>, <code>accentsHit</code> pro Score
+        liefert - deutlich präziser als die Score-Details in der Website-Oberfläche). Sie nutzt dieselbe
+        Combo-/Multiplikator-/Star-Power-Engine wie Gitarre. Kick, Snare und Tom-Treffer sind{' '}
+        <strong>50 Punkte</strong> wert, genauso viel wie eine Gitarren-Note. (Eine frühere Version dieser App
+        nahm 25 an - die Hälfte einer Gitarren-Note, eine ältere Konvention aus diesem Spiele-Genre - aber ein
+        echter Platz-1-Score für ein Pro-Drums-Chart lag <em>höher</em> als diese Schätzung, was für ein echtes
+        Maximum nie passieren darf, weshalb die Annahme auf 50 angehoben wurde.){' '}
+        <strong>Cymbal-Treffer sind 65 Punkte wert</strong> - gefunden durch Zerlegung des exakten{' '}
+        <code>noteScore</code>-Werts eines echten Platz-1-Scores: bei einem Chart mit 969 Nicht-Cymbal- und 570
+        Cymbal-Noten geht dieser Wert (85.450, für einen Lauf mit genau 1 verpassten Nicht-Cymbal-Note) nur bei 50
+        bzw. 65 exakt auf. <strong>Ghost-/Akzent-Noten, die mit der korrekten Dynamik getroffen werden, geben
+        zusätzlich einen festen, unmultiplizierten Bonus von 50 Punkten pro Note</strong> - gefunden, weil bei 5
+        von 6 echten Scores mit einem <code>ghostsHit</code>-/<code>accentsHit</code>-Wert &gt; 0 der{' '}
+        <code>totalScore</code> die Summe aller eigenen benannten Aufschlüsselungs-Felder um <em>exakt</em> 50
+        Punkte pro solchem Treffer überstieg (der 6. war auf eine unabhängige Art inkonsistent - dessen{' '}
+        <code>comboScore</code>-Feld zeigte 0 trotz eines hohen Max-Combo, wurde also als fehlerhafter Datensatz
+        behandelt). Dieser Bonus taucht in keinem benannten Feld auf - nicht einmal im verwirrend ähnlich
+        benannten <code>ghostScore</code>, das in jedem geprüften echten Beispiel 0 zeigt, unabhängig vom{' '}
+        <code>ghostsHit</code>-Wert - er zeigt sich nur als Lücke zwischen der Summe und dem Gesamtwert. Mit
+        Cymbal-Punkten, Ghost-/Akzent-Bonus und dem Ausschluss der "Expert+"-/2x-Kick-Noten (unten) zusammen landet
+        der berechnete Full-Combo-Max-Score für genau dieses Chart deutlich über dem echten
+        Fast-Full-Combo-Score, der nur 1 von 1.539 Noten verpasste - das erwartete Muster, und der bislang
+        stärkste Beleg dafür, dass diese Formel ungefähr stimmt. Kein Clean-Play-Bonus darüber hinaus (ein
+        Gitarre-/Bass-spezifischer Anschlag-Genauigkeits-Mechanismus ohne direktes Schlagzeug-Äquivalent) und
+        keine Sustain-Wertung (Schlagzeug-Treffer sind immer punktuell). Es gibt kein Schlagzeug-Äquivalent zum
+        Gitarren-Whammy, daher füllt sich die Star-Power-Leiste nur durch abgeschlossene SP-Phrasen (je 25%);
+        echte Schlagzeug-Star-Power wird durch das Spielen einer "Fill"-Zone aktiviert statt manuell zu einem
+        beliebigen Zeitpunkt - das ist nicht modelliert, die berechnete Aktivierungs-Flexibilität kann daher etwas
+        großzügiger sein als tatsächlich erreichbar. Der Solo-Bonus ist weiterhin unbestätigt (von Gitarre
+        übernommener Wert), da noch kein Schlagzeug-Chart mit Solo-Abschnitt gegen einen echten Score geprüft
+        wurde. Den Schlagzeug-Max-Score als gut begründete Schätzung betrachten, nicht als garantiert exakten Wert
+        wie bei Gitarre/Bass.
+      </p>
+      <p className="assumptions__caveat">
+        <strong>"Expert+"-/2x-Kick-Noten</strong> (eine alternative Kick-Note, mit der eine schnelle Passage statt
+        mit einem mit zwei Pedalen gespielt werden kann) sind zusätzlich zum regulären Expert-Pattern gechartet,
+        aber <em>nicht Teil des Standard-Charts</em>: ein echter Leaderboard-Mitschnitt bestätigte, dass Clone
+        Hero sie komplett aus der Standard-Notenanzahl und aus der Genauigkeits-Nennerangabe jedes echten Spielers
+        ausschließt (das Spiel zeigt 1.539 Noten für ein Chart, das diese App als 1.631 rohe Treffer parst - eine
+        Differenz von exakt 92, die eins zu eins der Anzahl dieser alternativen Kick-Noten entspricht). Spielbar
+        werden sie nur unter einem separaten, alternativen Leaderboard - Clone Hero hat einen eigenen{' '}
+        <strong>"Double Kick"-Score-Modifier</strong> mit einer komplett anderen Spielerliste und eigenen (beim
+        einen geprüften Beispiel niedrigeren) Bestwerten, was bestätigt, dass diese Noten eine optionale
+        Alternativ-Wertung sind statt Bonusinhalt innerhalb des normalen Charts. (Eine frühere Version dieser App
+        wertete sie stattdessen unter der Standard-Wertung als zwei gleichzeitige Kick-Treffer, mit der Annahme,
+        dass echte Bestenlisten-Scores implizieren, dass sie irgendwie zählen müssen - diese Annahme vermischte
+        fälschlich das alternative Leaderboard des Modifiers mit dem Standard-Leaderboard und wurde
+        zurückgenommen.)
+      </p>
+      <p className="assumptions__caveat">
+        Schlagzeug und Pro-Schlagzeug bekommen einen <strong>Modifier</strong>-Auswahl für die beiden Clone-Hero-
+        Score-Modifier, die (über die echte Score-API bestätigt) tatsächlich die gewertete Notenmenge verändern -{' '}
+        <strong>"Double Kick"</strong> nimmt die oben genannten "Expert+"-Noten als normale Kick-Treffer mit auf;{' '}
+        <strong>"No Kick"</strong> entfernt jede Kick-Lane-Note vollständig, bestätigt an den exakten Zahlen eines
+        echten Charts: die Notenanzahl sank exakt um dessen Kick-Notenanzahl, der Referenz-Max-Score exakt um
+        diese Anzahl × 50 Punkte. Clone Hero hat insgesamt rund 20 Score-Modifier (gespiegelter Highway,
+        Präzisions-Timing-Fenster, erzwungene HOPOs, etc.) - der Rest sind Spieler-/Assist-Einstellungen ohne
+        Hinweis darauf, dass sie die Notenmenge oder Punktwerte verändern, weshalb sie hier nicht angeboten
+        werden, und Gitarre/Bass bekommen aus demselben Grund gar keine Modifier-Auswahl. Der{' '}
+        <code>modifiers</code>-Parameter im "Auf Clone Hero Leaderboards ansehen"-Link folgt der jeweiligen
+        Auswahl.
       </p>
       <p className="assumptions__caveat">
         <strong>Drums</strong> und <strong>Pro Drums</strong> werden als getrennte Instrumente angeboten, passend
@@ -243,7 +341,14 @@ function GermanBody() {
         <code>prodrums</code>/<code>7LaneDrums,5LaneDrums</code>). Diese App berechnet für beide identische
         Chart-Daten und einen identischen Score - es gibt aktuell keinen Hinweis darauf, dass sich die
         Wertungsformel zwischen den Modi unterscheidet, nur dass sich unterscheidet, welche Hardware echte
-        Spieler nutzen (und damit, was sie tatsächlich präzise treffen können).
+        Spieler nutzen (und damit, was sie tatsächlich präzise treffen können). In der Praxis zeigte sich bei
+        einem echten, gegen das Live-Leaderboard geprüften Chart: Das reine <strong>Drums</strong>-Leaderboard
+        hatte nur eine einzige, alte Einreichung, während alle anderen Spieler - unabhängig davon, welches
+        "Instrument" sie im Spiel gewählt hatten, echtes Kit oder 5-Lane-kompatibler Controller - unter{' '}
+        <strong>Pro Drums</strong> auftauchten, mit dem Controller-Typ lediglich als Filter innerhalb dieses einen
+        Leaderboards. Clone Heros tatsächliche Instrument-/Controller-Auswahl im Spiel scheint sich nicht so
+        sauber auf diese Aufteilung abzubilden, wie es allein die Query-Parameter nahelegen - der "Pro
+        Drums"-Link ist also der, den man zuerst prüfen sollte.
       </p>
       <p className="assumptions__caveat">
         Der Link "Auf Clone Hero Leaderboards ansehen" rekonstruiert denselben Hash, den Clone Hero selbst zur

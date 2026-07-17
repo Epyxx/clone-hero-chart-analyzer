@@ -20,7 +20,8 @@ import { TimingMap } from './model/timing';
 import { computeChartStats } from './model/stats';
 import { scoreTrackBase, ScoreRangeIndex, DRUM_POINTS_PER_NOTE, DRUM_CLEAN_PLAY_BONUS_PER_NOTE, DRUM_SOLO_BONUS_PER_NOTE } from './scoring/score';
 import { optimizeStarPower } from './scoring/optimizer';
-import { drumTrackToDifficultyTrack } from './scoring/drumAdapter';
+import { drumTrackToDifficultyTrack, countScoredDrumNotes } from './scoring/drumAdapter';
+import type { DrumScoreModifier } from './scoring/drumAdapter';
 import type { ParsedChart, DrumDifficultyTrack } from './model/chart';
 
 const DIFF_ORDER = ['Expert', 'Hard', 'Medium', 'Easy'] as const;
@@ -28,6 +29,19 @@ const FRET_NAMES = ['Green', 'Red', 'Yellow', 'Blue', 'Orange'];
 const DRUM_LANE_NAMES = ['Red', 'Yellow', 'Blue', 'Green'];
 const DRUMS_INSTRUMENT_ID = 'Drums';
 const DRUMS_PRO_INSTRUMENT_ID = 'ProDrums';
+
+// Matches leaderboards.clonehero.net's own instrument tab order.
+const INSTRUMENT_ORDER = [
+  'Single',
+  'DoubleBass',
+  'DoubleGuitar',
+  'DoubleRhythm',
+  'Keyboard',
+  'GHLGuitar',
+  'GHLBass',
+  DRUMS_INSTRUMENT_ID,
+  DRUMS_PRO_INSTRUMENT_ID,
+];
 
 /** Replaces any .zip file in the list with its extracted entries (song folders are unwrapped). */
 async function expandZipFiles(files: File[]): Promise<File[]> {
@@ -57,6 +71,7 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [instrument, setInstrument] = useState<string>('');
   const [difficulty, setDifficulty] = useState<string>('');
+  const [drumModifier, setDrumModifier] = useState<DrumScoreModifier>('none');
   const [pxPerTick, setPxPerTick] = useState(0.05);
 
   async function handleFiles(rawFiles: File[]) {
@@ -107,7 +122,11 @@ function App() {
         return imageFile ? URL.createObjectURL(imageFile) : null;
       });
       setFileName(chartFile.name);
-      const firstInst = parsed.instruments[0];
+      setDrumModifier('none');
+      const sortedInstruments = [...parsed.instruments].sort(
+        (a, b) => INSTRUMENT_ORDER.indexOf(a.instrument) - INSTRUMENT_ORDER.indexOf(b.instrument),
+      );
+      const firstInst = sortedInstruments[0];
       setInstrument(firstInst.instrument);
       const firstDiff = DIFF_ORDER.find((d) => firstInst.difficulties[d]) ?? Object.keys(firstInst.difficulties)[0];
       setDifficulty(firstDiff);
@@ -122,9 +141,9 @@ function App() {
   const drumTrack = isDrums ? chart?.drums?.[difficulty as DrumDifficultyTrack['difficulty']] : undefined;
 
   const track = useMemo(() => {
-    if (drumTrack) return drumTrackToDifficultyTrack(drumTrack);
+    if (drumTrack) return drumTrackToDifficultyTrack(drumTrack, drumModifier);
     return guitarTrack;
-  }, [drumTrack, guitarTrack]);
+  }, [drumTrack, guitarTrack, drumModifier]);
 
   const timing = useMemo(() => (chart ? new TimingMap(chart) : null), [chart]);
   const stats = useMemo(() => (chart && timing ? computeChartStats(chart, timing) : null), [chart, timing]);
@@ -157,11 +176,12 @@ function App() {
   }, [chart, ini, stats]);
 
   // The hash identifies the whole song - the URL just needs to point at whichever
-  // instrument+difficulty the user currently has selected in the app.
+  // instrument+difficulty (and, for Drums/Pro Drums, score modifier) the user currently has
+  // selected in the app.
   const leaderboardUrl = useMemo(() => {
     if (!leaderboardHash || !instrument || !difficulty) return null;
-    return buildLeaderboardUrl(leaderboardHash, instrument, difficulty);
-  }, [leaderboardHash, instrument, difficulty]);
+    return buildLeaderboardUrl(leaderboardHash, instrument, difficulty, isDrums && drumModifier !== 'none' ? drumModifier : '');
+  }, [leaderboardHash, instrument, difficulty, isDrums, drumModifier]);
 
   const availableDifficulties = isDrums
     ? DIFF_ORDER.filter((d) => chart?.drums?.[d])
@@ -190,12 +210,13 @@ function App() {
             instruments={[
               ...chart.instruments.map((i) => i.instrument),
               ...(chart.drums ? [DRUMS_INSTRUMENT_ID, DRUMS_PRO_INSTRUMENT_ID] : []),
-            ]}
+            ].sort((a, b) => INSTRUMENT_ORDER.indexOf(a) - INSTRUMENT_ORDER.indexOf(b))}
             difficulties={availableDifficulties}
             instrument={instrument}
             difficulty={difficulty}
             onInstrument={(v) => {
               setInstrument(v);
+              setDrumModifier('none');
               if (v === DRUMS_INSTRUMENT_ID || v === DRUMS_PRO_INSTRUMENT_ID) {
                 const d = DIFF_ORDER.find((d) => chart.drums?.[d]) ?? Object.keys(chart.drums ?? {})[0];
                 if (d) setDifficulty(d);
@@ -206,6 +227,8 @@ function App() {
               if (d) setDifficulty(d);
             }}
             onDifficulty={setDifficulty}
+            modifier={isDrums ? drumModifier : undefined}
+            onModifier={isDrums ? setDrumModifier : undefined}
           />
 
           {track && scored && result && scoreIndex && (
@@ -213,8 +236,9 @@ function App() {
               <ScoreSummary
                 scored={scored}
                 result={result}
-                noteCount={track.notes.length}
+                noteCount={drumTrack ? countScoredDrumNotes(drumTrack, drumModifier) : track.notes.length}
                 spPhraseCount={track.starPower.length}
+                isDrums={isDrums}
               />
 
               <div className="highway-controls">
@@ -264,14 +288,21 @@ function App() {
                         <i className="legend__dot" style={{ background: '#f2d43d', outline: '1.5px solid #ffe066', outlineOffset: 1 }} />
                         {t('legend.accent')}
                       </span>
-                      <span className="legend__item">
-                        <i className="legend__swatch legend__swatch--bar" style={{ background: '#f2953d' }} />
-                        {t('legend.kick')}
-                      </span>
-                      <span className="legend__item">
-                        <i className="legend__swatch legend__swatch--bar" style={{ background: '#f2953d', outline: '1.5px solid #ffffff', outlineOffset: 1 }} />
-                        {t('legend.doubleKick')}
-                      </span>
+                      {drumModifier !== 'noKick' && (
+                        <span className="legend__item">
+                          <i className="legend__swatch legend__swatch--bar" style={{ background: '#f2953d' }} />
+                          {t('legend.kick')}
+                        </span>
+                      )}
+                      {drumModifier === 'none' && (
+                        <span className="legend__item">
+                          <i
+                            className="legend__swatch legend__swatch--bar"
+                            style={{ background: '#f2953d', outline: '1.5px solid #ffffff', outlineOffset: 1 }}
+                          />
+                          {t('legend.doubleKick')}
+                        </span>
+                      )}
                     </>
                   ) : (
                     <>
@@ -328,6 +359,7 @@ function App() {
                       usedPhraseIndices={result.usedPhraseIndices}
                       scoreIndex={scoreIndex}
                       pxPerTick={pxPerTick}
+                      modifier={drumModifier}
                     />
                   ) : (
                     <Highway

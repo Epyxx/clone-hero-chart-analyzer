@@ -16,19 +16,44 @@ export const CLEAN_PLAY_BONUS_PER_NOTE = 2;
 
 /**
  * Drum scoring constants - UNLIKE every other value in this file, these are
- * NOT verified against real gameplay or engine source. Originally assumed to
- * be half of a guitar note (a common older GH/RB convention), but comparing
- * our calculated max against a real #1 leaderboard score (which must always
- * be <= the true theoretical max) showed that assumption was too low - the
- * real score exceeded our "half" estimate entirely. Drum notes scoring the
- * same 50 points as guitar (plus double-kick hits counting as two
- * simultaneous kicks - see drumAdapter.ts) lines up much better: the real
- * top score then lands just below our calculated max, the expected pattern.
- * Still not byte/engine verified the way everything else here is - see the
- * caveat in AssumptionsPanel.
+ * NOT verified against real gameplay or engine source, but ARE confirmed
+ * against real leaderboard scores' own point breakdowns, pulled directly
+ * from Clone Hero's score API (`noteScore`/`comboScore`/`spScore`/etc. as
+ * separate fields, not just a final total - see AssumptionsPanel for the
+ * endpoint). Kick/snare/tom notes score the same 50 points as a guitar note
+ * (an initial guess of 25 - half a guitar note, an older GH/RB convention -
+ * was too low: a real #1 leaderboard score exceeded the calculated max at
+ * 25/note, which can never happen for a true maximum).
+ *
+ * Cymbal hits score MORE: decomposing a real #1 score's exact `noteScore`
+ * value (85,450, for 968 non-cymbal + 570 cymbal hits out of 1,539 notes)
+ * only balances at 50/cymbal-hit=65 - confirmed to the exact point.
+ *
+ * Ghost/accent notes hit with the correct dynamic score an EXTRA flat,
+ * unmultiplied 50 points each (`fretCleanPlayBonus` in drumAdapter.ts) -
+ * found because 5 of 6 real scores with nonzero `ghostsHit`/`accentsHit`
+ * had a `totalScore` that exceeded the sum of every one of their own named
+ * breakdown fields by *exactly* 50 points per such hit (the 6th was
+ * internally inconsistent in a way unrelated to this - its `comboScore`
+ * field read 0 despite a large `maxCombo`, so it was treated as a bad
+ * record rather than evidence against the pattern). The bonus itself isn't
+ * broken out under any of the API's named fields (not even the confusingly
+ * name-matched `ghostScore`, which reads 0 in every real example checked,
+ * regardless of `ghostsHit` count) - it's only visible as a gap between the
+ * total and the sum of the parts.
+ *
+ * With cymbal points, the ghost/accent bonus, and the "Expert+"/2x-kick
+ * exclusion (see drumAdapter.ts) combined, a real chart's calculated
+ * full-combo max lands comfortably above a real near-full-combo score - the
+ * expected pattern, and the strongest evidence yet this formula is close to
+ * correct. Solo bonus is still a guess (guitar's value, carried over),
+ * unconfirmed either way since no drum chart with a solo section has been
+ * checked against a real score yet.
  */
 export const DRUM_POINTS_PER_NOTE = BASE_POINTS_PER_NOTE;
+export const DRUM_CYMBAL_POINTS_PER_NOTE = 65;
 export const DRUM_CLEAN_PLAY_BONUS_PER_NOTE = 0;
+export const DRUM_DYNAMICS_BONUS_PER_NOTE = 50;
 export const DRUM_SOLO_BONUS_PER_NOTE = 100;
 
 export interface ScoreTrackOptions {
@@ -106,7 +131,8 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number, optio
   track.notes.forEach((note, i) => {
     const tier = comboTier(i + 1);
     const chordSize = note.isOpen ? 1 : Math.max(1, note.frets.length);
-    const hitPoints = tier * pointsPerNote * chordSize;
+    const rawPoints = note.fretPoints ? note.fretPoints.reduce((sum, p) => sum + p, 0) : pointsPerNote * chordSize;
+    const hitPoints = tier * rawPoints;
 
     const isDisjoint = !note.isOpen && note.fretLengths.length > 1 && new Set(note.fretLengths).size > 1;
 
@@ -130,7 +156,9 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number, optio
 
     notes.push({ note, tier, hitPoints, sustainSegments, sustainBasePoints });
     baseScoreNoStarPower += hitPoints + sustainBasePoints;
-    cleanPlayBonus += cleanPlayBonusPerNote * (isDisjoint ? chordSize : 1);
+    cleanPlayBonus += note.fretCleanPlayBonus
+      ? note.fretCleanPlayBonus.reduce((sum, b) => sum + b, 0)
+      : cleanPlayBonusPerNote * (isDisjoint ? chordSize : 1);
   });
 
   let soloBonus = 0;

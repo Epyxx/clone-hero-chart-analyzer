@@ -14,6 +14,7 @@ const en = {
 
   'selectors.instrument': 'Instrument',
   'selectors.difficulty': 'Difficulty',
+  'selectors.modifier': 'Modifier',
 
   'instrument.Single': 'Guitar (Lead)',
   'instrument.DoubleGuitar': 'Guitar (Co-op)',
@@ -24,6 +25,10 @@ const en = {
   'instrument.GHLBass': 'Bass (6-Fret)',
   'instrument.Drums': 'Drums',
   'instrument.ProDrums': 'Pro Drums',
+
+  'modifier.none': 'None',
+  'modifier.doubleKick': 'Double Kick',
+  'modifier.noKick': 'No Kick',
 
   'songMeta.unknownTitle': 'Unknown song title',
   'songMeta.albumArtAlt': 'Album Art',
@@ -59,6 +64,7 @@ const en = {
   'scoreSummary.starPowerBonus': 'Star Power Bonus',
   'scoreSummary.soloBonus': 'Solo Bonus',
   'scoreSummary.cleanPlayBonus': 'Clean Play Bonus (+2/note)',
+  'scoreSummary.dynamicsBonus': 'Ghost/Accent Bonus (+50/note)',
   'scoreSummary.totalNotes': 'Total Notes',
   'scoreSummary.spPhrases': 'SP Phrases',
   'scoreSummary.optimalActivations': 'Optimal SP Activations',
@@ -78,7 +84,7 @@ const en = {
   'legend.ghost': 'Ghost',
   'legend.accent': 'Accent',
   'legend.kick': 'Kick',
-  'legend.doubleKick': 'Double kick',
+  'legend.doubleKick': 'Double kick (not scored by default)',
 
   'highway.points': '{{n}} pts',
   'highway.measureShort': 'Measure {{n}}',
@@ -112,6 +118,7 @@ const de = {
 
   'selectors.instrument': 'Instrument',
   'selectors.difficulty': 'Schwierigkeit',
+  'selectors.modifier': 'Modifier',
 
   'instrument.Single': 'Gitarre (Lead)',
   'instrument.DoubleGuitar': 'Gitarre (Co-op)',
@@ -122,6 +129,10 @@ const de = {
   'instrument.GHLBass': 'Bass (6-Fret)',
   'instrument.Drums': 'Schlagzeug',
   'instrument.ProDrums': 'Pro-Schlagzeug',
+
+  'modifier.none': 'Keiner',
+  'modifier.doubleKick': 'Double Kick',
+  'modifier.noKick': 'No Kick',
 
   'songMeta.unknownTitle': 'Unbekannter Songtitel',
   'songMeta.albumArtAlt': 'Album-Cover',
@@ -157,6 +168,7 @@ const de = {
   'scoreSummary.starPowerBonus': 'Star-Power-Bonus',
   'scoreSummary.soloBonus': 'Solo-Bonus',
   'scoreSummary.cleanPlayBonus': 'Clean-Play-Bonus (+2/Note)',
+  'scoreSummary.dynamicsBonus': 'Ghost-/Akzent-Bonus (+50/Note)',
   'scoreSummary.totalNotes': 'Noten gesamt',
   'scoreSummary.spPhrases': 'SP-Phrasen',
   'scoreSummary.optimalActivations': 'Optimale SP-Aktivierungen',
@@ -176,7 +188,7 @@ const de = {
   'legend.ghost': 'Ghost Note',
   'legend.accent': 'Akzent',
   'legend.kick': 'Kick',
-  'legend.doubleKick': 'Doppel-Kick',
+  'legend.doubleKick': 'Doppel-Kick (standardmäßig nicht gewertet)',
 
   'highway.points': '{{n}} Punkte',
   'highway.measureShort': 'Takt {{n}}',

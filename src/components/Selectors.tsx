@@ -1,5 +1,6 @@
 import { useLanguage } from '../i18n/LanguageContext';
 import type { TranslationKey } from '../i18n/translations';
+import type { DrumScoreModifier } from '../scoring/drumAdapter';
 
 interface Props {
   instruments: string[];
@@ -8,6 +9,9 @@ interface Props {
   difficulty: string;
   onInstrument: (v: string) => void;
   onDifficulty: (v: string) => void;
+  /** Only rendered when set - Clone Hero's kick-related score modifiers apply to Drums/Pro Drums only. */
+  modifier?: DrumScoreModifier;
+  onModifier?: (v: DrumScoreModifier) => void;
 }
 
 const INSTRUMENT_KEYS: Record<string, TranslationKey> = {
@@ -30,7 +34,22 @@ const DIFF_LABELS: Record<string, string> = {
   Easy: 'Easy',
 };
 
-export function Selectors({ instruments, difficulties, instrument, difficulty, onInstrument, onDifficulty }: Props) {
+const MODIFIER_KEYS: Record<DrumScoreModifier, TranslationKey> = {
+  none: 'modifier.none',
+  doubleKick: 'modifier.doubleKick',
+  noKick: 'modifier.noKick',
+};
+
+export function Selectors({
+  instruments,
+  difficulties,
+  instrument,
+  difficulty,
+  onInstrument,
+  onDifficulty,
+  modifier,
+  onModifier,
+}: Props) {
   const { t } = useLanguage();
   return (
     <div className="selectors">
@@ -54,6 +73,18 @@ export function Selectors({ instruments, difficulties, instrument, difficulty, o
           ))}
         </select>
       </label>
+      {modifier !== undefined && onModifier && (
+        <label>
+          <span>{t('selectors.modifier')}</span>
+          <select value={modifier} onChange={(e) => onModifier(e.target.value as DrumScoreModifier)}>
+            {(Object.keys(MODIFIER_KEYS) as DrumScoreModifier[]).map((m) => (
+              <option key={m} value={m}>
+                {t(MODIFIER_KEYS[m])}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 }

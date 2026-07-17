@@ -7,9 +7,10 @@ interface Props {
   result: OptimizationResult;
   noteCount: number;
   spPhraseCount: number;
+  isDrums?: boolean;
 }
 
-export function ScoreSummary({ scored, result, noteCount, spPhraseCount }: Props) {
+export function ScoreSummary({ scored, result, noteCount, spPhraseCount, isDrums }: Props) {
   const { t, locale } = useLanguage();
   const fmt = (n: number) => Math.round(n).toLocaleString(locale);
 
@@ -33,7 +34,7 @@ export function ScoreSummary({ scored, result, noteCount, spPhraseCount }: Props
           <span className="value">+{fmt(scored.soloBonus)}</span>
         </div>
         <div>
-          <span className="label">{t('scoreSummary.cleanPlayBonus')}</span>
+          <span className="label">{t(isDrums ? 'scoreSummary.dynamicsBonus' : 'scoreSummary.cleanPlayBonus')}</span>
           <span className="value">+{fmt(scored.cleanPlayBonus)}</span>
         </div>
         <div>
