@@ -82,9 +82,16 @@ function pruneEmptyPhrases<T extends { tick: number; length: number }>(phrases: 
   return kept;
 }
 
+/**
+ * Prefers the tempo's authored `beatsPerMinute` (set for `.chart`) over re-deriving it from
+ * `usPerQuarter` - re-deriving is a lossy float64 round-trip that can differ from the authored
+ * value in the last bit (see TempoEvent), which is enough to change the hash entirely. `.mid`
+ * tempos have no authored BPM at all, so `usPerQuarter` is the only source there - this was
+ * already the byte-verified path for `.mid` and is unaffected.
+ */
 function dedupTemposByTick(tempos: TempoEvent[]): { tick: number; beatsPerMinute: number }[] {
   const map = new Map<number, number>();
-  for (const t of tempos) map.set(t.tick, 60000000 / t.usPerQuarter);
+  for (const t of tempos) map.set(t.tick, t.beatsPerMinute ?? 60000000 / t.usPerQuarter);
   return [...map.entries()].map(([tick, beatsPerMinute]) => ({ tick, beatsPerMinute })).sort((a, b) => a.tick - b.tick);
 }
 

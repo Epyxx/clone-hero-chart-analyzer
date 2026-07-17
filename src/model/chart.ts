@@ -53,6 +53,16 @@ export interface TempoEvent {
   tick: number;
   /** Microseconds per quarter note. */
   usPerQuarter: number;
+  /**
+   * The exact BPM as authored in a `.chart` file's `B <milliBPM>` line, if this event came from
+   * one (absent for `.mid`, which has no native BPM - only `usPerQuarter`). Re-deriving BPM from
+   * `usPerQuarter` (`60_000_000 / usPerQuarter`) is a lossy round-trip for `.chart` tempos - it
+   * can differ from the authored value in the last bit of the float64 (confirmed: a chart with
+   * `B 110000` round-tripped to `110.00000000000001` instead of `110`), which silently produced
+   * a wrong leaderboard hash since the exact bytes are hashed. Keep this around wherever a hash
+   * needs to match Clone Hero's own bit-for-bit - see trackHash.ts.
+   */
+  beatsPerMinute?: number;
 }
 
 export interface TimeSigEvent {

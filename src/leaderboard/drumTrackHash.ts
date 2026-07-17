@@ -45,9 +45,11 @@ function pruneEmptyPhrases<T extends { tick: number; length: number }>(phrases: 
   return kept;
 }
 
+/** See the identical function in trackHash.ts for why `beatsPerMinute` must be preferred over
+ * re-deriving BPM from `usPerQuarter` - a lossy float64 round-trip for `.chart` tempos. */
 function dedupTemposByTick(tempos: TempoEvent[]): { tick: number; beatsPerMinute: number }[] {
   const map = new Map<number, number>();
-  for (const t of tempos) map.set(t.tick, 60000000 / t.usPerQuarter);
+  for (const t of tempos) map.set(t.tick, t.beatsPerMinute ?? 60000000 / t.usPerQuarter);
   return [...map.entries()].map(([tick, beatsPerMinute]) => ({ tick, beatsPerMinute })).sort((a, b) => a.tick - b.tick);
 }
 

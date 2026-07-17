@@ -172,7 +172,14 @@ function EnglishBody() {
         <code>.mid</code>-format Drums - all end-to-end verified against a real multi-instrument{' '}
         <code>.mid</code> capture (including working out exactly how a HOPO/forced marker authored only on the
         Expert difficulty carries over to the other difficulties, and reverse-engineering the drum note/dynamics
-        encoding: kick/snare/cymbal-vs-tom lanes, ghost/accent velocity, double-kick, and drum-fill zones).{' '}
+        encoding: kick/snare/cymbal-vs-tom lanes, ghost/accent velocity, double-kick, and drum-fill zones). A real
+        chart with an unusually dense, non-round tempo map (a "live session" recording with dozens of tempo
+        changes, some fractional to the thousandth of a BPM) exposed a subtle bug in that verification: converting
+        an authored <code>.chart</code> tempo to microseconds-per-quarter-note and back to BPM for the hash is a
+        lossy floating-point round-trip - it can differ from the originally authored value in the last bit of the
+        number (confirmed: a chart's <code>B 110000</code> line round-tripped to <code>110.00000000000001</code>{' '}
+        instead of <code>110</code>), which is enough to produce a completely different hash. Fixed by keeping the
+        exact authored BPM value on hand instead of re-deriving it.{' '}
         <code>.chart</code>-format Drums is also included, but as a best-effort port of the documented{' '}
         <code>.chart</code> drum note format (note types for kick/red/yellow/blue/green, double-kick,
         cymbal/ghost/accent modifiers, and the SP activation/fill phrase) - not independently verified against a
@@ -372,8 +379,15 @@ function GermanBody() {
         Mehrinstrumenten-<code>.mid</code>-Charts (inklusive der genauen Klärung, wie ein nur auf der
         Expert-Schwierigkeit gesetzter HOPO-/Forced-Marker auf die anderen Schwierigkeiten durchschlägt, und der
         vollständigen Entschlüsselung der Schlagzeug-Noten-/Dynamik-Kodierung: Kick/Snare/Cymbal-vs-Tom-Spuren,
-        Ghost-/Akzent-Velocity, Double-Kick und Fill-Zonen). <code>.chart</code>-Schlagzeug ist ebenfalls
-        enthalten, allerdings als Best-Effort-Portierung des dokumentierten <code>.chart</code>-Schlagzeug-Notenformats
+        Ghost-/Akzent-Velocity, Double-Kick und Fill-Zonen). Ein echtes Chart mit einer ungewöhnlich dichten,
+        krummen Tempo-Kurve (ein "Live Session"-Mitschnitt mit Dutzenden Tempowechseln, manche auf ein
+        Tausendstel BPM genau) deckte dabei einen subtilen Bug auf: Die Umrechnung eines authored{' '}
+        <code>.chart</code>-Tempos in Mikrosekunden-pro-Viertelnote und zurück in BPM für den Hash ist ein
+        verlustbehafteter Fließkomma-Umweg - er kann im letzten Bit vom ursprünglich authored Wert abweichen
+        (bestätigt: eine <code>B 110000</code>-Zeile eines Charts wurde zu <code>110.00000000000001</code> statt{' '}
+        <code>110</code> zurückgerechnet), was für einen komplett anderen Hash reicht. Behoben, indem der exakte
+        authored BPM-Wert direkt vorgehalten wird, statt ihn neu herzuleiten. <code>.chart</code>-Schlagzeug ist
+        ebenfalls enthalten, allerdings als Best-Effort-Portierung des dokumentierten <code>.chart</code>-Schlagzeug-Notenformats
         (Notentypen für Kick/Rot/Gelb/Blau/Grün, Double-Kick, Cymbal-/Ghost-/Akzent-Modifikatoren und die
         SP-Aktivierungs-/Fill-Phrase) - nicht unabhängig gegen einen echten Mitschnitt verifiziert wie alles andere
         in dieser Liste. Für Keyboard und 6-Fret-Gitarre/-Bass wird derselbe Algorithmus angewendet, jedoch mit

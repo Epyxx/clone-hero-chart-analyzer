@@ -24,7 +24,9 @@ const INSTRUMENT_SUFFIXES = ['Single', 'DoubleGuitar', 'DoubleBass', 'DoubleRhyt
 
 function splitSections(text: string): Map<string, string[]> {
   const sections = new Map<string, string[]>();
-  const lines = text.split(/\r?\n/);
+  // A leading UTF-8 BOM survives `.trim()` (it's not whitespace to JS) and would otherwise break
+  // matching the very first `[...]` section header, silently dropping that whole section.
+  const lines = text.replace(/^﻿/, '').split(/\r?\n/);
   let current: string | null = null;
   let buffer: string[] = [];
   for (const raw of lines) {
@@ -86,14 +88,15 @@ function parseSyncTrack(lines: string[]): { tempos: TempoEvent[]; timeSigs: Time
     const parts = kv.value.split(/\s+/);
     const type = parts[0];
     if (type === 'B') {
-      tempos.push({ tick, usPerQuarter: 60_000_000 / (parseInt(parts[1], 10) / 1000) });
+      const beatsPerMinute = parseInt(parts[1], 10) / 1000;
+      tempos.push({ tick, usPerQuarter: 60_000_000 / beatsPerMinute, beatsPerMinute });
     } else if (type === 'TS') {
       const numerator = parseInt(parts[1], 10);
       const denomPow = parts[2] !== undefined ? parseInt(parts[2], 10) : 2;
       timeSigs.push({ tick, numerator, denominator: 2 ** denomPow });
     }
   }
-  if (tempos.length === 0 || tempos[0].tick !== 0) tempos.unshift({ tick: 0, usPerQuarter: 500000 });
+  if (tempos.length === 0 || tempos[0].tick !== 0) tempos.unshift({ tick: 0, usPerQuarter: 500000, beatsPerMinute: 120 });
   if (timeSigs.length === 0 || timeSigs[0].tick !== 0) timeSigs.unshift({ tick: 0, numerator: 4, denominator: 4 });
   tempos.sort((a, b) => a.tick - b.tick);
   timeSigs.sort((a, b) => a.tick - b.tick);
