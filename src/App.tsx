@@ -22,6 +22,7 @@ import { scoreTrackBase, ScoreRangeIndex, DRUM_POINTS_PER_NOTE, DRUM_CLEAN_PLAY_
 import { optimizeStarPower } from './scoring/optimizer';
 import { drumTrackToDifficultyTrack, countScoredDrumNotes } from './scoring/drumAdapter';
 import type { DrumScoreModifier } from './scoring/drumAdapter';
+import { computeSustainCutoffTicks } from './leaderboard/trackHash';
 import type { ParsedChart, DrumDifficultyTrack } from './model/chart';
 
 const DIFF_ORDER = ['Expert', 'Hard', 'Medium', 'Easy'] as const;
@@ -148,21 +149,35 @@ function App() {
   const timing = useMemo(() => (chart ? new TimingMap(chart) : null), [chart]);
   const stats = useMemo(() => (chart && timing ? computeChartStats(chart, timing) : null), [chart, timing]);
 
+  // Sustains at/below this many ticks score zero, matching Clone Hero's own default cutoff
+  // (verified against real gameplay, not just the leaderboard hash - see AssumptionsPanel):
+  // `.mid` files without an explicit song.ini `sustain_cutoff_threshold` still apply one, since
+  // very short "sustains" are typically DAW/MIDI export artifacts, not real hold durations.
+  const sustainCutoffTicks = useMemo(() => {
+    if (!chart) return 0;
+    return computeSustainCutoffTicks(chart.resolution, chart.formatSource, ini?.sustainCutoffThreshold);
+  }, [chart, ini]);
+
   const scored = useMemo(() => {
     if (!track || !chart) return null;
     return scoreTrackBase(
       track,
       chart.resolution,
       isDrums
-        ? { pointsPerNote: DRUM_POINTS_PER_NOTE, cleanPlayBonusPerNote: DRUM_CLEAN_PLAY_BONUS_PER_NOTE, soloBonusPerNote: DRUM_SOLO_BONUS_PER_NOTE }
-        : {},
+        ? {
+            pointsPerNote: DRUM_POINTS_PER_NOTE,
+            cleanPlayBonusPerNote: DRUM_CLEAN_PLAY_BONUS_PER_NOTE,
+            soloBonusPerNote: DRUM_SOLO_BONUS_PER_NOTE,
+            sustainCutoffTicks,
+          }
+        : { sustainCutoffTicks },
     );
-  }, [track, chart, isDrums]);
+  }, [track, chart, isDrums, sustainCutoffTicks]);
 
   const result = useMemo(() => {
     if (!track || !scored || !timing || !chart) return null;
-    return optimizeStarPower(track, scored, timing, chart.resolution);
-  }, [track, scored, timing, chart]);
+    return optimizeStarPower(track, scored, timing, chart.resolution, sustainCutoffTicks);
+  }, [track, scored, timing, chart, sustainCutoffTicks]);
 
   const scoreIndex = useMemo(() => (scored ? new ScoreRangeIndex(scored) : null), [scored]);
 

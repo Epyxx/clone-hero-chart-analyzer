@@ -60,6 +60,15 @@ export interface ScoreTrackOptions {
   pointsPerNote?: number;
   cleanPlayBonusPerNote?: number;
   soloBonusPerNote?: number;
+  /**
+   * Sustains at or below this many ticks score zero sustain points, matching the leaderboard
+   * hash's `computeSustainCutoffTicks` (see `../leaderboard/trackHash.ts`) - confirmed necessary
+   * against real gameplay: a `.mid` chart's ~30-tick "sustains" (well under the `.mid` default of
+   * `floor(resolution/3)+1`) scored zero in-game, not the small-but-nonzero amount this engine
+   * used to award them. Undefined/0 means no cutoff (score every sustain as authored) - correct
+   * for `.chart`'s default, and worth keeping in mind before assuming this is always populated.
+   */
+  sustainCutoffTicks?: number;
 }
 
 /**
@@ -123,6 +132,8 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number, optio
   const pointsPerNote = options.pointsPerNote ?? BASE_POINTS_PER_NOTE;
   const cleanPlayBonusPerNote = options.cleanPlayBonusPerNote ?? CLEAN_PLAY_BONUS_PER_NOTE;
   const soloBonusPerNote = options.soloBonusPerNote ?? SOLO_MAX_BONUS_PER_NOTE;
+  const sustainCutoffTicks = options.sustainCutoffTicks ?? 0;
+  const trimSustain = (length: number) => (length <= sustainCutoffTicks ? 0 : length);
 
   const notes: NoteScoreInfo[] = [];
   let baseScoreNoStarPower = 0;
@@ -140,16 +151,20 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number, optio
     if (isDisjoint) {
       // Each fret's own sustain length is scored independently (not deduplicated even if two
       // frets share a length) - matches CH's `merge_uneven_sustains = false` behaviour.
-      for (const fretLength of note.fretLengths) {
+      for (const rawFretLength of note.fretLengths) {
+        const fretLength = trimSustain(rawFretLength);
         if (fretLength <= 0) continue;
         const ticksBudget = sustainTicksBudget(fretLength, resolution);
         const points = tier * ticksBudget;
         sustainSegments.push({ start: note.tick, end: note.tick + fretLength, rate: points / fretLength });
       }
-    } else if (note.length > 0) {
-      const ticksBudget = sustainTicksBudget(note.length, resolution);
-      const points = tier * ticksBudget;
-      sustainSegments.push({ start: note.tick, end: note.tick + note.length, rate: points / note.length });
+    } else {
+      const length = trimSustain(note.length);
+      if (length > 0) {
+        const ticksBudget = sustainTicksBudget(length, resolution);
+        const points = tier * ticksBudget;
+        sustainSegments.push({ start: note.tick, end: note.tick + length, rate: points / length });
+      }
     }
 
     const sustainBasePoints = sustainSegments.reduce((sum, seg) => sum + seg.rate * (seg.end - seg.start), 0);

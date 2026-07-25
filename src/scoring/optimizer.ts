@@ -18,7 +18,7 @@ const DRAIN_UNITS_PER_MEASURE_WHILE_ACTIVE = GAUGE_UNITS_FULL / MEASURES_PER_FUL
 // (CH engine: has_early_whammy = true, fixed 70ms hit window for the standard timing profile).
 const EARLY_WHAMMY_SECONDS = 0.07;
 
-interface WhammySegment {
+export interface WhammySegment {
   start: number;
   end: number;
 }
@@ -34,13 +34,13 @@ interface WhammySegment {
  * `EARLY_WHAMMY_SECONDS` earlier (early whammy), clamped to never precede the previous note's
  * own tick (a hard safety floor - real play can't whammy a note before reaching it).
  */
-function computeWhammySegments(track: DifficultyTrack, timing: TimingMap): WhammySegment[] {
+export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap, sustainCutoffTicks = 0): WhammySegment[] {
   const sortedPhrases = [...track.starPower].sort((a, b) => a.tick - b.tick);
   const notes = track.notes;
   const segments: WhammySegment[] = [];
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
-    if (note.length <= 0) continue;
+    if (note.length <= sustainCutoffTicks) continue;
     const phrase = sortedPhrases.find((p) => note.tick >= p.tick && note.tick < p.tick + p.length);
     if (!phrase) continue;
 
@@ -300,8 +300,9 @@ export function optimizeStarPower(
   scored: ScoredTrack,
   timing: TimingMap,
   resolution: number,
+  sustainCutoffTicks = 0,
 ): OptimizationResult {
-  const whammySegments = computeWhammySegments(track, timing);
+  const whammySegments = computeWhammySegments(track, timing, sustainCutoffTicks);
   const timeline = new GaugeTimeline(whammySegments, track.starPower, resolution);
   const points = buildDecisionPointsFromTimeline(track, timeline, whammySegments);
   const scoreIndex = new ScoreRangeIndex(scored);

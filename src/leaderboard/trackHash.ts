@@ -122,11 +122,14 @@ function computeHopoThresholdTicks(resolution: number, format: 'chart' | 'mid', 
 }
 
 /**
- * Unlike the max-score calculator (which never trims sustains by default, to avoid ever
- * under-counting the true max), the leaderboard hash must match Clone Hero's own default
- * exactly - which does apply a cutoff for `.mid` charts unless overridden.
+ * The default `.mid` cutoff (no cutoff at all for `.chart`, unless overridden) - confirmed
+ * against a real leaderboard hash, and later ALSO confirmed directly against real gameplay: a
+ * chart with several ~30-tick "sustains" at resolution 480 (well under this default's 161-tick
+ * threshold) scored zero sustain points for them in-game. The max-score calculator
+ * (score.ts/scoreTrackBase) uses this exact same function for the same reason - see
+ * AssumptionsPanel for that discovery.
  */
-function computeSustainCutoffTicks(resolution: number, format: 'chart' | 'mid', override?: number): number {
+export function computeSustainCutoffTicks(resolution: number, format: 'chart' | 'mid', override?: number): number {
   if (override !== undefined) return override;
   return format === 'mid' ? Math.floor(resolution / 3) + 1 : 0;
 }

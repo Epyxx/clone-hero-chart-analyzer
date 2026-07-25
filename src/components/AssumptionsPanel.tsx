@@ -25,12 +25,22 @@ function EnglishBody() {
           share the same length).
         </li>
         <li>
-          Sustain cutoff (<code>.mid</code> only, configurable via <code>sustain_cutoff_threshold</code> in
-          song.ini): very short "sustains" can be DAW export artifacts rather than real hold durations. Since the
-          exact default value Clone Hero itself uses can't be confirmed with certainty, no cutoff is applied{' '}
-          <em>unless</em> song.ini explicitly specifies one (every sustain length {'>'} 0 counts) - too aggressive an
-          assumption here would push the calculated maximum below scores that are actually achievable, which by
-          definition must never happen.
+          Sustain cutoff (<code>.mid</code> only, overridable via <code>sustain_cutoff_threshold</code> in
+          song.ini): very short "sustains" are usually DAW/MIDI export artifacts rather than real hold durations,
+          so <code>.mid</code> files get a default cutoff of <code>floor(resolution / 3) + 1</code> ticks - any
+          sustain at or under that scores zero sustain points. This used to be unapplied by default here (only
+          honored when song.ini set it explicitly), reasoning that guessing wrong could push the calculated
+          maximum below real achievable scores - but that turned out backwards: a real chart's several ~30-tick
+          "sustains" (resolution 480, so well under the 161-tick default) were directly confirmed, by testing
+          real gameplay, to score <em>zero</em> sustain points in-game, not the small nonzero amount this
+          calculator used to award them. Applying no cutoff was itself the "too aggressive" assumption -
+          it silently inflated the calculated max above what's really achievable. This default already matched
+          what the leaderboard-hash reconstruction (below) has used since it was verified byte-for-byte, so
+          this fix makes the two consistent instead of introducing a new, separate guess. Confirmed to the exact
+          point afterward: pulling a real #1 Perfect Full Combo score's own point breakdown from Clone Hero's
+          public score API, this app's computed sustain-score total for that entire chart matched the real one
+          exactly (as did the note score, combo-tier bonus, and clean-play bonus - see the Star Power caveat
+          below for the one component that didn't).
         </li>
         <li>
           The multiplier increases every 10 notes hit (1x → 2x → 3x → 4x, already from the 10th/20th/30th note in
@@ -75,8 +85,16 @@ function EnglishBody() {
         score bonus - subject to the constraint that activations may never overlap. Timing-squeeze techniques beyond
         that are not simulated (e.g. deliberately hitting notes late to shift an SP phrase slightly, or legacy
         GH1/2 compatibility where solo markers are scored as Star Power without modern SP phrases). The calculated
-        value is therefore a very tight, provably optimal upper bound within this model - real leaderboard scores
-        from top players can come in just under it, but never above.
+        value is a very tight, provably optimal upper bound <em>within this simplified model</em> - real leaderboard
+        scores from top players almost always come in under it, but a skilled squeeze-heavy run can occasionally
+        exceed it by a small margin. Directly confirmed on a real chart's full leaderboard: every component of the
+        formula (note score, sustain score, combo-tier bonus, clean-play bonus) matched a real #1 Perfect Full
+        Combo run's own point breakdown to the <em>exact</em> point - the entire gap between that run's real score
+        and this app's calculated max was in the Star Power bonus alone, and lined up with that specific run using
+        6 timing squeezes (a stat Clone Hero tracks per score) where every other real top-10 run - all Full Combos
+        too, none using more than 2 squeezes - landed comfortably under the calculated max. So: tight and reliable
+        for judging "close to optimal, no-squeeze" play, but not an absolute, unbeatable ceiling once
+        squeeze technique is in play.
       </p>
       <p className="assumptions__caveat">
         <strong>Drums scoring is a best-effort estimate, not verified the byte-exact way everything above this
@@ -217,11 +235,23 @@ function GermanBody() {
         </li>
         <li>
           Sustain-Cutoff (nur <code>.mid</code>, per <code>sustain_cutoff_threshold</code> in der song.ini
-          einstellbar): sehr kurze "Sustains" können DAW-Export-Artefakte statt echter Haltedauer sein. Da der
-          exakte Standardwert, den Clone Hero selbst verwendet, nicht zweifelsfrei zu belegen ist, wird{' '}
-          <em>ohne</em> explizite song.ini-Angabe kein Cutoff angewendet (jede Sustain-Länge {'>'} 0 zählt) - eine
-          zu aggressive Annahme hier würde sonst den berechneten Maximal-Score unter real erzielbare Werte drücken,
-          was per Definition nicht sein darf.
+          überschreibbar): sehr kurze "Sustains" sind meist DAW-/MIDI-Export-Artefakte statt echter Haltedauer,
+          weshalb <code>.mid</code>-Dateien standardmäßig einen Cutoff von <code>floor(Resolution / 3) + 1</code>{' '}
+          Ticks bekommen - jede Sustain bei oder unter diesem Wert zählt null Sustain-Punkte. Früher wurde dieser
+          Cutoff standardmäßig nicht angewendet (nur bei expliziter song.ini-Angabe), mit der Begründung, dass ein
+          falsch geratener Wert den berechneten Max-Score unter real erzielbare Werte drücken könnte - das war
+          aber genau andersherum: Bei einem echten Chart wurde direkt am echten Gameplay bestätigt, dass mehrere
+          ~30-Tick-"Sustains" (bei Resolution 480, also deutlich unter dem 161-Tick-Standardwert) im Spiel{' '}
+          <em>null</em> Sustain-Punkte geben - nicht den kleinen, aber von Null verschiedenen Betrag, den dieser
+          Rechner ihnen bisher gab. Gar keinen Cutoff anzuwenden war selbst die "zu aggressive" Annahme - sie hat
+          den berechneten Max-Score stillschweigend über das real Erreichbare hinaus aufgebläht. Dieser
+          Standardwert entsprach bereits dem, was die Leaderboard-Hash-Rekonstruktion (unten) seit ihrer
+          byte-genauen Verifizierung nutzt - der Fix macht die beiden also konsistent, statt eine neue,
+          eigenständige Annahme einzuführen. Danach auf den exakten Punkt bestätigt: Anhand der eigenen
+          Punkte-Aufschlüsselung eines echten Platz-1-Perfect-Full-Combo-Scores aus Clone Heros öffentlicher
+          Score-API stimmte die von dieser App berechnete Sustain-Score-Summe für das komplette Chart exakt mit
+          dem echten Wert überein (ebenso Note Score, Combo-Tier-Bonus und Clean-Play-Bonus - siehe den
+          Star-Power-Hinweis weiter unten für die eine Komponente, bei der das nicht der Fall war).
         </li>
         <li>
           Multiplikator steigt alle 10 getroffenen Noten (1x → 2x → 3x → 4x, bereits ab der 10./20./30. Note im
@@ -267,9 +297,17 @@ function GermanBody() {
         Punktebonus zu maximieren - unter der Nebenbedingung, dass Aktivierungen sich nie überlappen dürfen. Nicht
         simuliert wird darüber hinausgehendes Timing-Squeezing (z. B. Noten bewusst spät treffen, um eine SP-Phrase
         minimal zu verschieben, oder alte GH1/2-Kompatibilität, bei der Solo-Marker ohne moderne SP-Phrasen als
-        Star Power gewertet werden). Der berechnete Wert ist daher eine sehr enge, nachweislich optimale Obergrenze
-        innerhalb dieses Modells — echte Bestenlisten-Scores von Top-Spielern können knapp darunter liegen, aber
-        nicht darüber.
+        Star Power gewertet werden). Der berechnete Wert ist eine sehr enge, nachweislich optimale Obergrenze{' '}
+        <em>innerhalb dieses vereinfachten Modells</em> - echte Bestenlisten-Scores von Top-Spielern landen fast
+        immer darunter, aber ein squeeze-lastiger Lauf kann ihn gelegentlich um eine kleine Marge übertreffen.
+        Direkt an einem echten Chart-Leaderboard bestätigt: Jede Komponente der Formel (Note Score, Sustain Score,
+        Combo-Tier-Bonus, Clean-Play-Bonus) stimmte mit der eigenen Punkte-Aufschlüsselung eines echten
+        Platz-1-Perfect-Full-Combo-Laufs auf den <em>exakten</em> Punkt überein - die gesamte Lücke zwischen dessen
+        echtem Score und dem hier berechneten Max lag allein im Star-Power-Bonus, und passte genau dazu, dass
+        dieser eine Lauf 6 Timing-Squeezes nutzte (ein Wert, den Clone Hero pro Score erfasst) - während jeder
+        andere echte Top-10-Lauf, ebenfalls Full Combo, aber mit höchstens 2 Squeezes, deutlich unter dem
+        berechneten Max blieb. Also: eng und verlässlich, um "nah am Optimum, ohne Squeeze" zu beurteilen, aber
+        keine absolute, unschlagbare Obergrenze, sobald Squeeze-Technik im Spiel ist.
       </p>
       <p className="assumptions__caveat">
         <strong>
