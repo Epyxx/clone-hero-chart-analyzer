@@ -1,4 +1,4 @@
-import type { DifficultyTrack, StarPowerPhrase } from '../model/chart';
+import type { DifficultyTrack } from '../model/chart';
 import type { TimingMap } from '../model/timing';
 import { ScoreRangeIndex } from './score';
 import type { ScoredTrack } from './score';
@@ -13,9 +13,18 @@ const GAUGE_ROUNDING = 4; // discretize the DP's gauge dimension to steps of 1/4
 // While active, the gauge continuously drains at a rate that empties a full bar (120 units)
 // over exactly 8 measures - i.e. 120/8 = 15 units per measure - regardless of whammying.
 const DRAIN_UNITS_PER_MEASURE_WHILE_ACTIVE = GAUGE_UNITS_FULL / MEASURES_PER_FULL_BAR;
-// "Early whammy": a SP-sustain note can be hit up to this long before its own tick (within the
-// normal ~70ms hit window) and whammied from that earlier point on, gaining a small head start
-// (CH engine: has_early_whammy = true, fixed 70ms hit window for the standard timing profile).
+// Clone Hero's standard (non-"Precision Mode") guitar hit window, confirmed by decompiling the
+// game's own Assembly-CSharp.dll (BasePlayer's front-timing field defaults to 0.07f; Precision
+// Mode tightens it to 0.0525f but is an opt-in harder modifier no score-maximizing player would
+// enable). Any note can legally be hit up to this long before its own tick. Two consequences are
+// modelled here: (1) "early whammy" - a SP-sustain note whammied from that earlier point gains a
+// small head start; (2) "phrase squeeze" - the +GAUGE_UNITS_PER_PHRASE gauge pulse for completing
+// an SP phrase fires the instant the phrase's last note is hit-processed (BasePlayer.cs: awarded
+// synchronously inside the note-hit handler, not at any fixed chart tick), so hitting that note
+// early banks the pulse earlier too, letting an activation's fixed-duration window start (and
+// therefore end) sooner and cover more of the song - the real, measured source of the small
+// margin by which top squeeze-heavy runs can exceed a naive tick-exact optimum (see
+// AssumptionsPanel).
 const EARLY_WHAMMY_SECONDS = 0.07;
 
 export interface WhammySegment {
@@ -56,6 +65,33 @@ export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap,
 }
 
 /**
+ * The tick at which each SP phrase's completion pulse (+GAUGE_UNITS_PER_PHRASE) actually fires:
+ * the moment its last contained note is hit, which - like any note - can legally happen up to
+ * EARLY_WHAMMY_SECONDS before that note's own chart tick (see the constant's doc comment). A
+ * phrase with no notes in its range (a malformed/empty phrase) can never be completed by a real
+ * hit, so it falls back to its nominal end tick rather than contributing a squeeze-shifted pulse.
+ */
+function computePhrasePulseTicks(track: DifficultyTrack, timing: TimingMap): number[] {
+  const sortedPhrases = [...track.starPower].sort((a, b) => a.tick - b.tick);
+  const notes = track.notes;
+  return sortedPhrases.map((phrase) => {
+    let lastIndex = -1;
+    for (let i = 0; i < notes.length; i++) {
+      const tick = notes[i].tick;
+      if (tick >= phrase.tick && tick < phrase.tick + phrase.length) lastIndex = i;
+      else if (tick >= phrase.tick + phrase.length) break;
+    }
+    if (lastIndex === -1) return phrase.tick + phrase.length;
+
+    const note = notes[lastIndex];
+    let pulseTick = timing.ticksBefore(note.tick, EARLY_WHAMMY_SECONDS);
+    const prevNote = notes[lastIndex - 1];
+    if (prevNote) pulseTick = Math.max(pulseTick, prevNote.tick);
+    return Math.min(pulseTick, note.tick);
+  });
+}
+
+/**
  * Tracks the cumulative (uncapped, unspent) SP gauge as a continuous function of tick,
  * built from instantaneous phrase-completion pulses and continuous whammy ramps.
  * Lets the optimizer query "how much gauge would be banked by tick t" at ANY tick,
@@ -66,7 +102,7 @@ class GaugeTimeline {
   private eventCumulative: number[] = [];
   private eventRateAfter: number[] = [];
 
-  constructor(whammySegments: WhammySegment[], phrases: StarPowerPhrase[], resolution: number) {
+  constructor(whammySegments: WhammySegment[], phrasePulseTicks: number[], resolution: number) {
     const rateUnitsPerTick = GAUGE_UNITS_PER_QUARTER_WHAMMY / resolution;
     const byTick = new Map<number, { rateDelta: number; pulse: number }>();
     const bump = (tick: number, rateDelta: number, pulse: number) => {
@@ -79,8 +115,8 @@ class GaugeTimeline {
       bump(seg.start, rateUnitsPerTick, 0);
       bump(seg.end, -rateUnitsPerTick, 0);
     }
-    for (const phrase of phrases) {
-      bump(phrase.tick + phrase.length, 0, GAUGE_UNITS_PER_PHRASE);
+    for (const tick of phrasePulseTicks) {
+      bump(tick, 0, GAUGE_UNITS_PER_PHRASE);
     }
 
     const ticks = Array.from(byTick.keys()).sort((a, b) => a - b);
@@ -128,6 +164,8 @@ function buildDecisionPointsFromTimeline(
   track: DifficultyTrack,
   timeline: GaugeTimeline,
   whammySegments: WhammySegment[],
+  phrasePulseTicks: number[],
+  resolution: number,
 ): DecisionPoint[] {
   // Decision points include every note boundary (so activation can align with any note,
   // not just SP phrase completions) plus every gauge-changing event.
@@ -136,13 +174,21 @@ function buildDecisionPointsFromTimeline(
     tickSet.add(n.tick);
     if (n.length > 0) tickSet.add(n.tick + n.length);
   }
+  // Real activation input is polled every frame with no hit-window/note-grid constraint at all
+  // (confirmed in the decompiled input handler - the SP button is checked in Update(), completely
+  // decoupled from note timing), so a real player can activate the instant the gauge crosses the
+  // 50%-full threshold mid-whammy, not just at a note/segment boundary. Subdividing each whammy
+  // segment gives the DP those intermediate activation candidates too.
+  const SUBDIVISION_TICKS = Math.max(1, Math.round(resolution / 8));
   for (const seg of whammySegments) {
     tickSet.add(seg.start);
     tickSet.add(seg.end);
+    for (let tick = seg.start + SUBDIVISION_TICKS; tick < seg.end; tick += SUBDIVISION_TICKS) {
+      tickSet.add(tick);
+    }
   }
-  for (const p of track.starPower) {
-    tickSet.add(p.tick);
-    tickSet.add(p.tick + p.length);
+  for (const tick of phrasePulseTicks) {
+    tickSet.add(tick);
   }
 
   const ticks = Array.from(tickSet).sort((a, b) => a - b);
@@ -207,7 +253,7 @@ function computeActivationWindow(
   startTick: number,
   gaugeUnits: number,
   whammySegments: WhammySegment[],
-  phrases: StarPowerPhrase[],
+  phrasePulseTicks: number[],
   timing: TimingMap,
   resolution: number,
 ): { endTick: number; measures: number } {
@@ -215,10 +261,7 @@ function computeActivationWindow(
   let currentTick = startTick;
 
   const segQueue = whammySegments.filter((seg) => seg.end > startTick).sort((a, b) => a.start - b.start);
-  const pulseQueue = phrases
-    .map((p) => p.tick + p.length)
-    .filter((t) => t > startTick)
-    .sort((a, b) => a - b);
+  const pulseQueue = phrasePulseTicks.filter((t) => t > startTick).sort((a, b) => a - b);
   let segIdx = 0;
   let pulseIdx = 0;
 
@@ -303,8 +346,9 @@ export function optimizeStarPower(
   sustainCutoffTicks = 0,
 ): OptimizationResult {
   const whammySegments = computeWhammySegments(track, timing, sustainCutoffTicks);
-  const timeline = new GaugeTimeline(whammySegments, track.starPower, resolution);
-  const points = buildDecisionPointsFromTimeline(track, timeline, whammySegments);
+  const phrasePulseTicks = computePhrasePulseTicks(track, timing);
+  const timeline = new GaugeTimeline(whammySegments, phrasePulseTicks, resolution);
+  const points = buildDecisionPointsFromTimeline(track, timeline, whammySegments, phrasePulseTicks, resolution);
   const scoreIndex = new ScoreRangeIndex(scored);
 
   if (points.length === 0 || track.starPower.length === 0) {
@@ -351,7 +395,7 @@ export function optimizeStarPower(
           point.tick,
           filled,
           whammySegments,
-          track.starPower,
+          phrasePulseTicks,
           timing,
           resolution,
         );
