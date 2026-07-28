@@ -42,11 +42,19 @@ export interface WhammySegment {
  * don't double-count the same sustain. The segment's start is additionally pulled up to
  * `EARLY_WHAMMY_SECONDS` earlier (early whammy), clamped to never precede the previous note's
  * own tick (a hard safety floor - real play can't whammy a note before reaching it).
+ *
+ * A long sustain (e.g. a held chord) commonly runs underneath several shorter single notes -
+ * each of those notes contributes its own [start, end] span here, which can overlap the still-
+ * active long note's span. A player only has one whammy bar, so overlapping spans must count as
+ * ONE continuous whammy-able window, not stack additively - the raw per-note spans are merged
+ * into their union before returning so GaugeTimeline never sums two overlapping rates into an
+ * impossible >1x gain (confirmed as a real bug: it let the gauge reach 50% far earlier than any
+ * amount of real or by-hand whammying could actually achieve).
  */
 export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap, sustainCutoffTicks = 0): WhammySegment[] {
   const sortedPhrases = [...track.starPower].sort((a, b) => a.tick - b.tick);
   const notes = track.notes;
-  const segments: WhammySegment[] = [];
+  const rawSegments: WhammySegment[] = [];
   for (let i = 0; i < notes.length; i++) {
     const note = notes[i];
     if (note.length <= sustainCutoffTicks) continue;
@@ -58,9 +66,19 @@ export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap,
     if (prevNote) start = Math.max(start, prevNote.tick);
     start = Math.min(start, note.tick);
 
-    segments.push({ start, end: note.tick + note.length });
+    rawSegments.push({ start, end: note.tick + note.length });
   }
-  segments.sort((a, b) => a.start - b.start);
+  rawSegments.sort((a, b) => a.start - b.start);
+
+  const segments: WhammySegment[] = [];
+  for (const seg of rawSegments) {
+    const last = segments[segments.length - 1];
+    if (last && seg.start <= last.end) {
+      last.end = Math.max(last.end, seg.end);
+    } else {
+      segments.push({ ...seg });
+    }
+  }
   return segments;
 }
 
