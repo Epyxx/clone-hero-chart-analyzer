@@ -22,7 +22,7 @@ const DIFF_PREFIXES: Record<string, DifficultyTrack['difficulty']> = {
 
 const INSTRUMENT_SUFFIXES = ['Single', 'DoubleGuitar', 'DoubleBass', 'DoubleRhythm', 'Keyboard', 'GHLGuitar', 'GHLBass'];
 
-function splitSections(text: string): Map<string, string[]> {
+export function splitSections(text: string): Map<string, string[]> {
   const sections = new Map<string, string[]>();
   // A leading UTF-8 BOM survives `.trim()` (it's not whitespace to JS) and would otherwise break
   // matching the very first `[...]` section header, silently dropping that whole section.
@@ -49,7 +49,7 @@ function parseKeyValue(line: string): { key: string; value: string } | null {
   return { key: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() };
 }
 
-interface SongSection {
+export interface SongSection {
   resolution: number;
   name?: string;
   artist?: string;
@@ -59,7 +59,7 @@ interface SongSection {
   year?: string;
 }
 
-function parseSong(lines: string[]): SongSection {
+export function parseSong(lines: string[]): SongSection {
   let resolution = 192;
   const out: SongSection = { resolution: 192 };
   for (const line of lines) {
