@@ -100,6 +100,26 @@ const en = {
   'assumptions.summary': 'Assumptions & Scoring Methodology',
 
   'leaderboard.viewLink': 'View on Clone Hero Leaderboards ↗',
+
+  'library.tabUpload': 'Upload',
+  'library.tabLibrary': 'Song library',
+  'library.unsupportedBrowser':
+    "Scanning a local song folder needs a Chromium-based browser (Chrome, Edge, Opera, Brave, ...) - it isn't supported here. Use the Upload tab instead.",
+  'library.selectFolder': 'Select songs folder…',
+  'library.rescan': 'Rescan folder',
+  'library.scanning': 'Scanning… {{count}} songs found so far',
+  'library.grantAccessHint': 'Access to your previously selected songs folder needs to be re-confirmed.',
+  'library.grantAccess': 'Re-grant access',
+  'library.empty': 'Select your Clone Hero "Songs" folder to search it by title, artist, or charter.',
+  'library.searchPlaceholder': 'Search by title, artist, charter…',
+  'library.noResults': 'No songs match your search.',
+  'library.songsFound': '{{count}} songs',
+  'library.columnTitle': 'Title',
+  'library.columnArtist': 'Artist',
+  'library.columnCharter': 'Charter',
+  'library.columnAlbum': 'Album',
+  'library.pickError': 'Could not read that folder.',
+  'library.loadError': 'Could not load this song’s files.',
 } satisfies Record<string, string>;
 
 const de = {
@@ -204,6 +224,26 @@ const de = {
   'assumptions.summary': 'Annahmen & Berechnungsgrundlage',
 
   'leaderboard.viewLink': 'Auf Clone Hero Leaderboards ansehen ↗',
+
+  'library.tabUpload': 'Upload',
+  'library.tabLibrary': 'Song-Bibliothek',
+  'library.unsupportedBrowser':
+    'Das Scannen eines lokalen Song-Ordners benötigt einen Chromium-basierten Browser (Chrome, Edge, Opera, Brave, ...) - hier nicht unterstützt. Nutze stattdessen den Upload-Tab.',
+  'library.selectFolder': 'Songs-Ordner auswählen…',
+  'library.rescan': 'Ordner neu scannen',
+  'library.scanning': 'Scanne… bisher {{count}} Songs gefunden',
+  'library.grantAccessHint': 'Der Zugriff auf deinen zuvor gewählten Songs-Ordner muss erneut bestätigt werden.',
+  'library.grantAccess': 'Zugriff erneut erlauben',
+  'library.empty': 'Wähle deinen Clone-Hero-"Songs"-Ordner aus, um nach Titel, Interpret oder Charter zu suchen.',
+  'library.searchPlaceholder': 'Suche nach Titel, Interpret, Charter…',
+  'library.noResults': 'Keine Songs gefunden.',
+  'library.songsFound': '{{count}} Songs',
+  'library.columnTitle': 'Titel',
+  'library.columnArtist': 'Interpret',
+  'library.columnCharter': 'Charter',
+  'library.columnAlbum': 'Album',
+  'library.pickError': 'Ordner konnte nicht gelesen werden.',
+  'library.loadError': 'Dateien dieses Songs konnten nicht geladen werden.',
 } satisfies Record<keyof typeof en, string>;
 
 export type TranslationKey = keyof typeof en;

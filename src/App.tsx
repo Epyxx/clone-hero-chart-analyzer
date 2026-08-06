@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { unzipSync } from 'fflate';
 import './App.css';
 import { FileDropzone } from './components/FileDropzone';
+import { LibraryBrowser } from './components/LibraryBrowser';
+import { isDirectoryPickerSupported } from './utils/fileSystemAccess';
 import { Selectors } from './components/Selectors';
 import { ScoreSummary } from './components/ScoreSummary';
 import { SongMetaPanel } from './components/SongMetaPanel';
@@ -74,6 +76,8 @@ function App() {
   const [difficulty, setDifficulty] = useState<string>('');
   const [drumModifier, setDrumModifier] = useState<DrumScoreModifier>('none');
   const [pxPerTick, setPxPerTick] = useState(0.05);
+  const [sourceTab, setSourceTab] = useState<'upload' | 'library'>('upload');
+  const librarySupported = useMemo(isDirectoryPickerSupported, []);
 
   async function handleFiles(rawFiles: File[]) {
     setError(null);
@@ -214,7 +218,30 @@ function App() {
         <p className="app__subtitle">{t('app.subtitle')}</p>
       </header>
 
-      <FileDropzone onFiles={handleFiles} fileName={fileName} error={error} />
+      {librarySupported && (
+        <div className="source-tabs">
+          <button
+            type="button"
+            className={`source-tabs__btn ${sourceTab === 'upload' ? 'source-tabs__btn--active' : ''}`}
+            onClick={() => setSourceTab('upload')}
+          >
+            {t('library.tabUpload')}
+          </button>
+          <button
+            type="button"
+            className={`source-tabs__btn ${sourceTab === 'library' ? 'source-tabs__btn--active' : ''}`}
+            onClick={() => setSourceTab('library')}
+          >
+            {t('library.tabLibrary')}
+          </button>
+        </div>
+      )}
+
+      {sourceTab === 'library' && librarySupported ? (
+        <LibraryBrowser onFiles={handleFiles} />
+      ) : (
+        <FileDropzone onFiles={handleFiles} fileName={fileName} error={error} />
+      )}
 
       {chart && stats && (
         <>
