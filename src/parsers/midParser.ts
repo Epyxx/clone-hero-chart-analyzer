@@ -78,13 +78,17 @@ class ByteReader {
 
 interface MidiEvent {
   tick: number;
-  type: 'noteOn' | 'noteOff' | 'tempo' | 'timeSig' | 'text' | 'trackName';
+  type: 'noteOn' | 'noteOff' | 'tempo' | 'timeSig' | 'text' | 'trackName' | 'sysexOpen';
   note?: number;
   velocity?: number;
   usPerQuarter?: number;
   numerator?: number;
   denominator?: number;
   text?: string;
+  /** sysexOpen only: difficulty index 0-3 (Easy..Expert), or 0xff for all difficulties. */
+  sysexDifficulty?: number;
+  /** sysexOpen only: true when the Phase Shift open-note range starts, false when it ends. */
+  sysexOn?: boolean;
 }
 
 function readTrack(reader: ByteReader): MidiEvent[] {
@@ -126,7 +130,12 @@ function readTrack(reader: ByteReader): MidiEvent[] {
       }
     } else if (status === 0xf0 || status === 0xf7) {
       const sysexLen = reader.vlq();
-      reader.bytes(sysexLen);
+      const sysex = reader.bytes(sysexLen);
+      // Phase Shift sysex: F0 'P' 'S' 00 00 <difficulty> <type> <on/off> F7 - type 1 marks the
+      // notes inside the range as open notes (they sit on the green lane in the MIDI itself).
+      if (status === 0xf0 && sysexLen >= 7 && sysex[0] === 0x50 && sysex[1] === 0x53 && sysex[2] === 0x00 && sysex[3] === 0x00 && sysex[5] === 0x01) {
+        events.push({ tick, type: 'sysexOpen', sysexDifficulty: sysex[4], sysexOn: sysex[6] !== 0 });
+      }
     } else if (type === 0x90 || type === 0x80) {
       const note = reader.u8();
       const velocity = reader.u8();
@@ -205,6 +214,23 @@ function resolveMarker(tick: number, ownRanges: MarkerRange[], expertRanges: Mar
   return { isForced: false, isTap: false };
 }
 
+function collectSysexOpenRanges(events: MidiEvent[], difficultyIndex: number): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  let start: number | null = null;
+  for (const ev of events) {
+    if (ev.type !== 'sysexOpen') continue;
+    if (ev.sysexDifficulty !== 0xff && ev.sysexDifficulty !== difficultyIndex) continue;
+    if (ev.sysexOn) {
+      if (start === null) start = ev.tick;
+    } else if (start !== null) {
+      ranges.push({ start, end: ev.tick });
+      start = null;
+    }
+  }
+  if (start !== null) ranges.push({ start, end: Infinity });
+  return ranges;
+}
+
 function buildDifficultyTrack(
   events: MidiEvent[],
   difficulty: DifficultyTrack['difficulty'],
@@ -220,6 +246,8 @@ function buildDifficultyTrack(
   const active = new Map<number, number>(); // note number -> start tick
   const starPowerRanges: StarPowerPhrase[] = [];
   const solos: SoloSection[] = [];
+
+  const openRanges = collectSysexOpenRanges(events, (base - 60) / 12);
 
   for (const ev of events) {
     if (ev.type === 'noteOn') {
@@ -266,6 +294,8 @@ function buildDifficultyTrack(
       // .chart has no such cutoff (confirmed against SightRead's midiconverter.cpp).
       const rawLength = ev.tick - start;
       const thisLength = rawLength <= sustainCutoffThreshold ? 0 : rawLength;
+      // A green note inside a Phase Shift sysex open range is really an open note.
+      if (!isOpen && fretNum === 0 && openRanges.some((r) => start >= r.start && start < r.end)) isOpen = true;
       if (isOpen) n.isOpen = true;
       else {
         n.frets.push(fretNum as Fret);
