@@ -1,4 +1,4 @@
-import type { DifficultyTrack } from '../model/chart';
+import type { DifficultyTrack, StarPowerPhrase } from '../model/chart';
 import type { TimingMap } from '../model/timing';
 import { ScoreRangeIndex } from './score';
 import type { ScoredTrack } from './score';
@@ -98,6 +98,27 @@ export function computeWhammySegments(
 }
 
 /**
+ * The SP phrases that can ever be completed: sorted by tick, and only those that strictly contain
+ * at least one note. A phrase with no note in [tick, tick + length) - including a zero-length one,
+ * even if a note sits exactly on its tick - awards no gauge in Clone Hero (confirmed against a real
+ * run: "Phrases: 68/71" on a chart with exactly three zero-length phrases).
+ */
+function awardablePhrases(track: DifficultyTrack): { phrase: StarPowerPhrase; lastIndex: number }[] {
+  const notes = track.notes;
+  const out: { phrase: StarPowerPhrase; lastIndex: number }[] = [];
+  for (const phrase of [...track.starPower].sort((a, b) => a.tick - b.tick)) {
+    let lastIndex = -1;
+    for (let i = 0; i < notes.length; i++) {
+      const tick = notes[i].tick;
+      if (tick >= phrase.tick && tick < phrase.tick + phrase.length) lastIndex = i;
+      else if (tick >= phrase.tick + phrase.length) break;
+    }
+    if (lastIndex >= 0) out.push({ phrase, lastIndex });
+  }
+  return out;
+}
+
+/**
  * The tick at which each SP phrase's completion pulse (+GAUGE_UNITS_PER_PHRASE) actually fires:
  * the moment its last contained note is hit, which - like any note - can legally happen up to
  * EARLY_WHAMMY_SECONDS before that note's own chart tick (see the constant's doc comment). A
@@ -111,17 +132,8 @@ function computePhrasePulseTicks(
   noteGapSeconds = 0,
   settleSeconds = 0,
 ): number[] {
-  const sortedPhrases = [...track.starPower].sort((a, b) => a.tick - b.tick);
   const notes = track.notes;
-  return sortedPhrases.map((phrase) => {
-    let lastIndex = -1;
-    for (let i = 0; i < notes.length; i++) {
-      const tick = notes[i].tick;
-      if (tick >= phrase.tick && tick < phrase.tick + phrase.length) lastIndex = i;
-      else if (tick >= phrase.tick + phrase.length) break;
-    }
-    if (lastIndex === -1) return phrase.tick + phrase.length;
-
+  return awardablePhrases(track).map(({ lastIndex }) => {
     const note = notes[lastIndex];
     let pulseTick = timing.ticksBefore(note.tick, earlyHitSeconds);
     const prevNote = notes[lastIndex - 1];
@@ -135,20 +147,9 @@ function computePhrasePulseTicks(
   });
 }
 
-/** Index into `track.notes` of each sorted SP phrase's last contained note (-1 if it has none). */
+/** Index into `track.notes` of each awardable SP phrase's last contained note (aligned with the pulse ticks). */
 function phraseLastNoteIndices(track: DifficultyTrack): number[] {
-  const notes = track.notes;
-  return [...track.starPower]
-    .sort((a, b) => a.tick - b.tick)
-    .map((phrase) => {
-      let lastIndex = -1;
-      for (let i = 0; i < notes.length; i++) {
-        const tick = notes[i].tick;
-        if (tick >= phrase.tick && tick < phrase.tick + phrase.length) lastIndex = i;
-        else if (tick >= phrase.tick + phrase.length) break;
-      }
-      return lastIndex;
-    });
+  return awardablePhrases(track).map((p) => p.lastIndex);
 }
 
 /**
@@ -276,6 +277,12 @@ export interface Activation {
   gaugeUnitsUsed: number;
   measures: number;
   bonusPoints: number;
+  /**
+   * Index into `track.notes` of the phrase-completing note that lifted the gauge to the 50% needed
+   * to activate (so it must be struck BEFORE the SP press), or -1 if the gauge was already high
+   * enough without it.
+   */
+  criticalNoteIndex: number;
 }
 
 export interface OptimizationResult {
@@ -510,12 +517,14 @@ export function optimizeStarPower(
         // that very note was struck BEFORE the activation, so it can't itself score Star Power -
         // even though its tick lies inside (or within a hit window of) the activation. (If the
         // gauge was already high enough without it, the player is free to strike it later.)
+        let criticalNoteIndex = -1;
         if (filled - GAUGE_UNITS_PER_PHRASE < GAUGE_UNITS_MIN_ACTIVATE - 1e-6) {
           let critical = -1;
           for (let j = 0; j < phrasePulseTicks.length; j++) {
             if (phrasePulseTicks[j] <= point.tick + 1e-6 && phrasePulseTicks[j] > state.lastEndTick && (critical < 0 || phrasePulseTicks[j] > phrasePulseTicks[critical])) critical = j;
           }
           const noteIdx = critical >= 0 ? phraseLastNote[critical] : -1;
+          criticalNoteIndex = noteIdx;
           if (noteIdx >= 0) {
             const info = scored.notes[noteIdx];
             if (info && info.note.tick >= hitFrom && info.note.tick < slackTo) bonusGain -= info.hitPoints;
@@ -525,7 +534,7 @@ export function optimizeStarPower(
           bonus: state.bonus + bonusGain,
           gauge: 0,
           lastEndTick: endTick,
-          activation: { startTick: point.tick, endTick, gaugeUnitsUsed: filled, measures, bonusPoints: bonusGain },
+          activation: { startTick: point.tick, endTick, gaugeUnitsUsed: filled, measures, bonusPoints: bonusGain, criticalNoteIndex },
           prev: state,
         };
 
