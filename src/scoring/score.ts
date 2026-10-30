@@ -92,7 +92,15 @@ function sustainTicksBudget(length: number, resolution: number): number {
 export interface SustainSegment {
   start: number;
   end: number;
-  rate: number; // tier-weighted points per tick, pre-SP
+  /** Number of discrete sustain ticks (`ceil(length / tickGap)`) and the points each is worth (the combo tier), pre-SP. */
+  tickCount: number;
+  tickGap: number;
+  tickWeight: number;
+}
+
+/** Chart tick at which a segment's k-th (1-based) sustain point is awarded - the last one is clamped to the sustain's end. */
+function sustainTickPosition(seg: SustainSegment, k: number): number {
+  return Math.min(seg.start + k * seg.tickGap, seg.end);
 }
 
 export interface NoteScoreInfo {
@@ -154,20 +162,16 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number, optio
       for (const rawFretLength of note.fretLengths) {
         const fretLength = trimSustain(rawFretLength);
         if (fretLength <= 0) continue;
-        const ticksBudget = sustainTicksBudget(fretLength, resolution);
-        const points = tier * ticksBudget;
-        sustainSegments.push({ start: note.tick, end: note.tick + fretLength, rate: points / fretLength });
+        sustainSegments.push({ start: note.tick, end: note.tick + fretLength, tickCount: sustainTicksBudget(fretLength, resolution), tickGap: sustainTickGap(resolution), tickWeight: tier });
       }
     } else {
       const length = trimSustain(note.length);
       if (length > 0) {
-        const ticksBudget = sustainTicksBudget(length, resolution);
-        const points = tier * ticksBudget;
-        sustainSegments.push({ start: note.tick, end: note.tick + length, rate: points / length });
+        sustainSegments.push({ start: note.tick, end: note.tick + length, tickCount: sustainTicksBudget(length, resolution), tickGap: sustainTickGap(resolution), tickWeight: tier });
       }
     }
 
-    const sustainBasePoints = sustainSegments.reduce((sum, seg) => sum + seg.rate * (seg.end - seg.start), 0);
+    const sustainBasePoints = sustainSegments.reduce((sum, seg) => sum + seg.tickCount * seg.tickWeight, 0);
 
     notes.push({ note, tier, hitPoints, sustainSegments, sustainBasePoints });
     baseScoreNoStarPower += hitPoints + sustainBasePoints;
@@ -192,16 +196,15 @@ export function scoreTrackBase(track: DifficultyTrack, resolution: number, optio
  * Note: the clean-play bonus is intentionally excluded here since it is never
  * doubled by Star Power.
  *
- * Sustain segments are integrated via a rate-delta sweep (like a mini gauge
- * timeline) rather than assumed non-overlapping, since a disjoint chord's
- * per-fret segments all start at the same tick and legitimately overlap.
+ * Sustains are indexed as the discrete ticks the game awards (not a continuous
+ * rate), each segment on its own, since a disjoint chord's per-fret segments all
+ * start at the same tick and legitimately overlap.
  */
 export class ScoreRangeIndex {
   private hitTicks: number[];
   private hitCumulative: number[];
-  private sustainEventTicks: number[];
-  private sustainCumulativeArea: number[];
-  private sustainRateAfter: number[];
+  private sustainTickPositions: number[];
+  private sustainTickCumulative: number[];
 
   constructor(scored: ScoredTrack) {
     const sortedByTick = [...scored.notes].sort((a, b) => a.note.tick - b.note.tick);
@@ -214,27 +217,22 @@ export class ScoreRangeIndex {
       this.hitCumulative.push(cum);
     }
 
-    const rateDeltaByTick = new Map<number, number>();
+    // Sustain points are awarded in discrete ticks (see `sustainTickGap`), not continuously -
+    // one entry per tick, so a window only gets the ticks that actually fall inside it.
+    const ticks: { pos: number; weight: number }[] = [];
     for (const n of scored.notes) {
       for (const seg of n.sustainSegments) {
-        rateDeltaByTick.set(seg.start, (rateDeltaByTick.get(seg.start) ?? 0) + seg.rate);
-        rateDeltaByTick.set(seg.end, (rateDeltaByTick.get(seg.end) ?? 0) - seg.rate);
+        for (let k = 1; k <= seg.tickCount; k++) ticks.push({ pos: sustainTickPosition(seg, k), weight: seg.tickWeight });
       }
     }
-    const ticks = Array.from(rateDeltaByTick.keys()).sort((a, b) => a - b);
-    this.sustainEventTicks = [];
-    this.sustainCumulativeArea = [];
-    this.sustainRateAfter = [];
-    let area = 0;
-    let rate = 0;
-    let lastTick = ticks[0] ?? 0;
-    for (const tick of ticks) {
-      area += rate * (tick - lastTick);
-      rate += rateDeltaByTick.get(tick)!;
-      this.sustainEventTicks.push(tick);
-      this.sustainCumulativeArea.push(area);
-      this.sustainRateAfter.push(rate);
-      lastTick = tick;
+    ticks.sort((a, b) => a.pos - b.pos);
+    this.sustainTickPositions = [];
+    this.sustainTickCumulative = [];
+    let sustainSum = 0;
+    for (const t of ticks) {
+      sustainSum += t.weight;
+      this.sustainTickPositions.push(t.pos);
+      this.sustainTickCumulative.push(sustainSum);
     }
   }
 
@@ -255,30 +253,28 @@ export class ScoreRangeIndex {
     return idx === -1 ? 0 : this.hitCumulative[idx];
   }
 
-  private sustainAreaBefore(tick: number): number {
-    if (this.sustainEventTicks.length === 0) return 0;
-    // find last event at/before tick
+  /** Sum of the sustain tick points awarded at or before `tick`. */
+  private sustainPointsUpTo(tick: number): number {
     let lo = 0;
-    let hi = this.sustainEventTicks.length - 1;
+    let hi = this.sustainTickPositions.length - 1;
     let idx = -1;
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
-      if (this.sustainEventTicks[mid] <= tick) {
+      if (this.sustainTickPositions[mid] <= tick) {
         idx = mid;
         lo = mid + 1;
       } else {
         hi = mid - 1;
       }
     }
-    if (idx === -1) return 0;
-    return this.sustainCumulativeArea[idx] + this.sustainRateAfter[idx] * (tick - this.sustainEventTicks[idx]);
+    return idx === -1 ? 0 : this.sustainTickCumulative[idx];
   }
 
-  /** Tier-weighted (pre-SP) points strictly within [a, b). */
+  /** Tier-weighted (pre-SP) points within the window: note heads in [a, b), sustain ticks in (a, b]. */
   scoreInRange(a: number, b: number): number {
     if (b <= a) return 0;
     const hit = this.hitPointsBefore(b) - this.hitPointsBefore(a);
-    const sustain = this.sustainAreaBefore(b) - this.sustainAreaBefore(a);
+    const sustain = this.sustainPointsUpTo(b) - this.sustainPointsUpTo(a);
     return hit + sustain;
   }
 
@@ -291,7 +287,7 @@ export class ScoreRangeIndex {
    */
   scoreWithHitSlack(a: number, b: number, hitFrom: number, hitTo: number): number {
     const hit = hitTo > hitFrom ? this.hitPointsBefore(hitTo) - this.hitPointsBefore(hitFrom) : 0;
-    const sustain = b > a ? this.sustainAreaBefore(b) - this.sustainAreaBefore(a) : 0;
+    const sustain = b > a ? this.sustainPointsUpTo(b) - this.sustainPointsUpTo(a) : 0;
     return hit + sustain;
   }
 }
