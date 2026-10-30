@@ -78,16 +78,18 @@ class ByteReader {
 
 interface MidiEvent {
   tick: number;
-  type: 'noteOn' | 'noteOff' | 'tempo' | 'timeSig' | 'text' | 'trackName' | 'sysexOpen';
+  type: 'noteOn' | 'noteOff' | 'tempo' | 'timeSig' | 'text' | 'trackName' | 'sysexMarker';
   note?: number;
   velocity?: number;
   usPerQuarter?: number;
   numerator?: number;
   denominator?: number;
   text?: string;
-  /** sysexOpen only: difficulty index 0-3 (Easy..Expert), or 0xff for all difficulties. */
+  /** sysexMarker only: 'open' or 'tap' range marker. */
+  sysexKind?: 'open' | 'tap';
+  /** sysexMarker only: difficulty index 0-3 (Easy..Expert), or 0xff for all difficulties. */
   sysexDifficulty?: number;
-  /** sysexOpen only: true when the Phase Shift open-note range starts, false when it ends. */
+  /** sysexMarker only: true when the Phase Shift open-note range starts, false when it ends. */
   sysexOn?: boolean;
 }
 
@@ -133,8 +135,8 @@ function readTrack(reader: ByteReader): MidiEvent[] {
       const sysex = reader.bytes(sysexLen);
       // Phase Shift sysex: F0 'P' 'S' 00 00 <difficulty> <type> <on/off> F7 - type 1 marks the
       // notes inside the range as open notes (they sit on the green lane in the MIDI itself).
-      if (status === 0xf0 && sysexLen >= 7 && sysex[0] === 0x50 && sysex[1] === 0x53 && sysex[2] === 0x00 && sysex[3] === 0x00 && sysex[5] === 0x01) {
-        events.push({ tick, type: 'sysexOpen', sysexDifficulty: sysex[4], sysexOn: sysex[6] !== 0 });
+      if (status === 0xf0 && sysexLen >= 7 && sysex[0] === 0x50 && sysex[1] === 0x53 && sysex[2] === 0x00 && sysex[3] === 0x00 && (sysex[5] === 0x01 || sysex[5] === 0x04)) {
+        events.push({ tick, type: 'sysexMarker', sysexKind: sysex[5] === 0x01 ? 'open' : 'tap', sysexDifficulty: sysex[4], sysexOn: sysex[6] !== 0 });
       }
     } else if (type === 0x90 || type === 0x80) {
       const note = reader.u8();
@@ -214,11 +216,11 @@ function resolveMarker(tick: number, ownRanges: MarkerRange[], expertRanges: Mar
   return { isForced: false, isTap: false };
 }
 
-function collectSysexOpenRanges(events: MidiEvent[], difficultyIndex: number): { start: number; end: number }[] {
+function collectSysexRanges(events: MidiEvent[], difficultyIndex: number, kind: 'open' | 'tap'): { start: number; end: number }[] {
   const ranges: { start: number; end: number }[] = [];
   let start: number | null = null;
   for (const ev of events) {
-    if (ev.type !== 'sysexOpen') continue;
+    if (ev.type !== 'sysexMarker' || ev.sysexKind !== kind) continue;
     if (ev.sysexDifficulty !== 0xff && ev.sysexDifficulty !== difficultyIndex) continue;
     if (ev.sysexOn) {
       if (start === null) start = ev.tick;
@@ -241,13 +243,15 @@ function buildDifficultyTrack(
   sustainCutoffThreshold: number,
   ownMarkerRanges: MarkerRange[],
   expertMarkerRanges: MarkerRange[],
+  sysexOpen: boolean,
 ): DifficultyTrack {
   const noteMap = new Map<number, NoteEvent>();
   const active = new Map<number, number>(); // note number -> start tick
   const starPowerRanges: StarPowerPhrase[] = [];
   const solos: SoloSection[] = [];
 
-  const openRanges = collectSysexOpenRanges(events, (base - 60) / 12);
+  const difficultyIndex = (base - 60) / 12;
+  const openRanges = sysexOpen ? collectSysexRanges(events, difficultyIndex, 'open') : [];
 
   for (const ev of events) {
     if (ev.type === 'noteOn') {
@@ -325,6 +329,8 @@ export interface MidParseOptions {
   starPowerNoteOverride?: number;
   /** song.ini `sustain_cutoff_threshold` override, in ticks (default: resolution/3). */
   sustainCutoffThresholdOverride?: number;
+  /** Phase Shift sysex open-note markers (default on). */
+  sysexOpen?: boolean;
 }
 
 export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {}): ParsedChart {
@@ -442,6 +448,7 @@ export function parseMidFile(buffer: ArrayBuffer, options: MidParseOptions = {})
         sustainCutoffThreshold,
         ownMarkerRanges,
         expertMarkerRanges,
+        options.sysexOpen ?? true,
       );
       if (diffTrack.notes.length > 0) difficulties[difficulty] = diffTrack;
       for (const n of diffTrack.notes) lastTick = Math.max(lastTick, n.tick + n.length);

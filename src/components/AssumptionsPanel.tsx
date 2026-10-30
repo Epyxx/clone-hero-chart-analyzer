@@ -6,7 +6,8 @@ function EnglishBody() {
       <p>
         The calculated score is the <strong>theoretical maximum score</strong>: 100% Full Combo (no missed notes, no
         overstrums), 100% solo accuracy, and an <strong>optimal Star Power path</strong> including "early whammy"
-        (see below). Timing-squeeze techniques beyond that are not simulated.
+        (see below) and edge "squeezing" of Star Power activations (see below). Other timing-squeeze techniques are not
+        simulated.
       </p>
       <ul>
         <li>50 points per note (each note in a chord counts individually).</li>
@@ -82,8 +83,12 @@ function EnglishBody() {
       <p className="assumptions__caveat">
         The optimizer can activate Star Power at any note boundary in the chart (not just phrase boundaries) and
         dynamically tests every combination of banking (collecting multiple phrases) and activating to maximize the
-        score bonus - subject to the constraint that activations may never overlap. Timing-squeeze techniques beyond
-        that are not simulated (e.g. deliberately hitting notes late to shift an SP phrase slightly, or legacy
+        score bonus - subject to the constraint that activations may never overlap. It also models squeezing at the
+        edges of an activation: a note scores Star Power if it is <em>hit</em> while SP is active, and the 70ms hit
+        window lets a player hit a note up to 70ms late (after SP has started) or up to 70ms early (before SP has
+        ended), so notes within one hit window of an activation's start or end are counted too (Clone Hero tracks
+        these as "squeezes"; confirmed against a real #1 score on a chart whose calculated max had been too low).
+        Squeeze techniques beyond that are not simulated (e.g. legacy
         GH1/2 compatibility where solo markers are scored as Star Power without modern SP phrases). The calculated
         value is a very tight, provably optimal upper bound <em>within this simplified model</em> - real leaderboard
         scores from top players almost always come in under it, but a skilled squeeze-heavy run can occasionally
@@ -214,7 +219,8 @@ function GermanBody() {
       <p>
         Der berechnete Score ist der <strong>theoretische Maximal-Score</strong>: 100% Full Combo (keine verpassten
         Noten, kein Overstrum), 100% Solo-Genauigkeit, und ein <strong>optimaler Star-Power-Pfad</strong> inklusive
-        "Early Whammy" (siehe unten). Nicht simuliert wird darüber hinausgehendes Timing-Squeezing.
+        "Early Whammy" (siehe unten) und Rand-"Squeezing" der Star-Power-Aktivierungen (siehe unten). Weitere
+        Timing-Squeeze-Techniken werden nicht simuliert.
       </p>
       <ul>
         <li>50 Punkte pro Note (jede Note eines Akkords zählt einzeln).</li>
@@ -294,9 +300,13 @@ function GermanBody() {
       <p className="assumptions__caveat">
         Der Optimierer kann Star Power an jeder Notengrenze im Chart aktivieren (nicht nur an Phrasengrenzen) und
         testet dynamisch alle Kombinationen aus Banking (mehrere Phrasen sammeln) und Aktivieren, um den
-        Punktebonus zu maximieren - unter der Nebenbedingung, dass Aktivierungen sich nie überlappen dürfen. Nicht
-        simuliert wird darüber hinausgehendes Timing-Squeezing (z. B. Noten bewusst spät treffen, um eine SP-Phrase
-        minimal zu verschieben, oder alte GH1/2-Kompatibilität, bei der Solo-Marker ohne moderne SP-Phrasen als
+        Punktebonus zu maximieren - unter der Nebenbedingung, dass Aktivierungen sich nie überlappen dürfen. Außerdem wird das Squeezing an den Rändern einer
+        Aktivierung modelliert: Eine Note zählt als Star Power, wenn sie <em>getroffen</em> wird, während SP aktiv ist,
+        und das 70-ms-Trefferfenster erlaubt es, eine Note bis zu 70 ms zu spät (nachdem SP gestartet ist) oder bis zu
+        70 ms zu früh (bevor SP endet) zu treffen - Noten innerhalb eines Trefferfensters um Start oder Ende einer
+        Aktivierung werden daher mitgezählt (Clone Hero erfasst diese als "Squeezes"; bestätigt an einem echten
+        Platz-1-Score auf einem Chart, dessen berechnetes Max zu niedrig war). Darüber hinausgehendes
+        Squeezing wird nicht simuliert (z. B. alte GH1/2-Kompatibilität, bei der Solo-Marker ohne moderne SP-Phrasen als
         Star Power gewertet werden). Der berechnete Wert ist eine sehr enge, nachweislich optimale Obergrenze{' '}
         <em>innerhalb dieses vereinfachten Modells</em> - echte Bestenlisten-Scores von Top-Spielern landen fast
         immer darunter, aber ein squeeze-lastiger Lauf kann ihn gelegentlich um eine kleine Marge übertreffen.

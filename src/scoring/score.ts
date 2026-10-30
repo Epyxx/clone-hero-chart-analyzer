@@ -281,4 +281,17 @@ export class ScoreRangeIndex {
     const sustain = this.sustainAreaBefore(b) - this.sustainAreaBefore(a);
     return hit + sustain;
   }
+
+  /**
+   * Like `scoreInRange(a, b)`, but note HEADS are counted over the wider range [hitFrom, hitTo)
+   * while sustain points still only accrue over the real [a, b) window. A note head scores
+   * Star Power if the note is HIT while SP is active, and the hit window lets a player hit it up
+   * to ~70ms off its tick - a sustain, by contrast, only earns SP points for the ticks actually
+   * held while SP is on.
+   */
+  scoreWithHitSlack(a: number, b: number, hitFrom: number, hitTo: number): number {
+    const hit = hitTo > hitFrom ? this.hitPointsBefore(hitTo) - this.hitPointsBefore(hitFrom) : 0;
+    const sustain = b > a ? this.sustainAreaBefore(b) - this.sustainAreaBefore(a) : 0;
+    return hit + sustain;
+  }
 }

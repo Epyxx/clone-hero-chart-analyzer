@@ -26,6 +26,16 @@ const DRAIN_UNITS_PER_MEASURE_WHILE_ACTIVE = GAUGE_UNITS_FULL / MEASURES_PER_FUL
 // margin by which top squeeze-heavy runs can exceed a naive tick-exact optimum (see
 // AssumptionsPanel).
 const EARLY_WHAMMY_SECONDS = 0.07;
+// The same hit window also lets Star Power "squeeze" extra notes into an activation: a note counts
+// toward SP if it is HIT while SP is active, so a note up to this long before the activation can
+// be hit late (after SP has started) and a note up to this long after SP ends can be hit early
+// (before it stops). The game even tracks these (its score breakdown has a "squeezes" count and
+// "Squeeze Score"). Confirmed against a real #1 leaderboard score (Falling In Reverse - Losing
+// My Life) that exceeded the tick-exact optimum by exactly the notes squeezed in at both ends of
+// its activations. The epsilon makes the edge inclusive: charts commonly land a note exactly one
+// hit window past an activation's end, and a real player hitting at 69.9ms catches it.
+const SQUEEZE_WINDOW_SECONDS = 0.07;
+const SQUEEZE_EPSILON_SECONDS = 1e-4;
 
 export interface WhammySegment {
   start: number;
@@ -51,7 +61,12 @@ export interface WhammySegment {
  * impossible >1x gain (confirmed as a real bug: it let the gauge reach 50% far earlier than any
  * amount of real or by-hand whammying could actually achieve).
  */
-export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap, sustainCutoffTicks = 0): WhammySegment[] {
+export function computeWhammySegments(
+  track: DifficultyTrack,
+  timing: TimingMap,
+  sustainCutoffTicks = 0,
+  earlyWhammySeconds = EARLY_WHAMMY_SECONDS,
+): WhammySegment[] {
   const sortedPhrases = [...track.starPower].sort((a, b) => a.tick - b.tick);
   const notes = track.notes;
   const rawSegments: WhammySegment[] = [];
@@ -61,7 +76,7 @@ export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap,
     const phrase = sortedPhrases.find((p) => note.tick >= p.tick && note.tick < p.tick + p.length);
     if (!phrase) continue;
 
-    let start = timing.ticksBefore(note.tick, EARLY_WHAMMY_SECONDS);
+    let start = timing.ticksBefore(note.tick, earlyWhammySeconds);
     const prevNote = notes[i - 1];
     if (prevNote) start = Math.max(start, prevNote.tick);
     start = Math.min(start, note.tick);
@@ -89,7 +104,13 @@ export function computeWhammySegments(track: DifficultyTrack, timing: TimingMap,
  * phrase with no notes in its range (a malformed/empty phrase) can never be completed by a real
  * hit, so it falls back to its nominal end tick rather than contributing a squeeze-shifted pulse.
  */
-function computePhrasePulseTicks(track: DifficultyTrack, timing: TimingMap): number[] {
+function computePhrasePulseTicks(
+  track: DifficultyTrack,
+  timing: TimingMap,
+  earlyHitSeconds = EARLY_WHAMMY_SECONDS,
+  noteGapSeconds = 0,
+  settleSeconds = 0,
+): number[] {
   const sortedPhrases = [...track.starPower].sort((a, b) => a.tick - b.tick);
   const notes = track.notes;
   return sortedPhrases.map((phrase) => {
@@ -102,11 +123,32 @@ function computePhrasePulseTicks(track: DifficultyTrack, timing: TimingMap): num
     if (lastIndex === -1) return phrase.tick + phrase.length;
 
     const note = notes[lastIndex];
-    let pulseTick = timing.ticksBefore(note.tick, EARLY_WHAMMY_SECONDS);
+    let pulseTick = timing.ticksBefore(note.tick, earlyHitSeconds);
     const prevNote = notes[lastIndex - 1];
-    if (prevNote) pulseTick = Math.max(pulseTick, prevNote.tick);
-    return Math.min(pulseTick, note.tick);
+    // The previous note must still be struck first - with a minimum gap between strums if the
+    // caller needs one (a bot can't strum two notes arbitrarily close together).
+    if (prevNote) pulseTick = Math.max(pulseTick, timing.ticksBefore(prevNote.tick, -noteGapSeconds));
+    pulseTick = Math.min(pulseTick, note.tick);
+    // A caller that presses the SP button right at the pulse needs the game to have processed the
+    // note hit first.
+    return settleSeconds > 0 ? timing.ticksBefore(pulseTick, -settleSeconds) : pulseTick;
   });
+}
+
+/** Index into `track.notes` of each sorted SP phrase's last contained note (-1 if it has none). */
+function phraseLastNoteIndices(track: DifficultyTrack): number[] {
+  const notes = track.notes;
+  return [...track.starPower]
+    .sort((a, b) => a.tick - b.tick)
+    .map((phrase) => {
+      let lastIndex = -1;
+      for (let i = 0; i < notes.length; i++) {
+        const tick = notes[i].tick;
+        if (tick >= phrase.tick && tick < phrase.tick + phrase.length) lastIndex = i;
+        else if (tick >= phrase.tick + phrase.length) break;
+      }
+      return lastIndex;
+    });
 }
 
 /**
@@ -179,11 +221,13 @@ interface DecisionPoint {
 }
 
 function buildDecisionPointsFromTimeline(
+  timing: TimingMap,
   track: DifficultyTrack,
   timeline: GaugeTimeline,
   whammySegments: WhammySegment[],
   phrasePulseTicks: number[],
   resolution: number,
+  squeezeWindowSeconds: number,
 ): DecisionPoint[] {
   // Decision points include every note boundary (so activation can align with any note,
   // not just SP phrase completions) plus every gauge-changing event.
@@ -207,6 +251,12 @@ function buildDecisionPointsFromTimeline(
   }
   for (const tick of phrasePulseTicks) {
     tickSet.add(tick);
+  }
+  // The best activation start for squeezing is generally NOT on a note's own tick but up to a
+  // hit window either side of it (activate just before a note and hit it early, or just after it
+  // and hit it late), so offer those as candidates too.
+  for (const n of track.notes) {
+    for (const offset of [-1, -0.5, 0.5, 1].map((f) => f * squeezeWindowSeconds)) tickSet.add(Math.round(timing.ticksBefore(n.tick, -offset) * 100) / 100);
   }
 
   const ticks = Array.from(tickSet).sort((a, b) => a - b);
@@ -238,6 +288,14 @@ export interface OptimizationResult {
 
 interface DpState {
   bonus: number;
+  /** The exact (un-rounded) gauge this state carries. The DP's map key is only a rounded bucket
+   *  of it - accumulating the rounded value instead would add a bias on every step (e.g. a
+   *  +0.125 whammy sliver always rounds UP to 0.25, doubling the gain across a finely-subdivided
+   *  segment), which the DP then exploits by picking whichever path rounds most favourably. */
+  gauge: number;
+  /** End tick of the most recent activation on this path (-Infinity if none yet) - notes squeezed
+   *  into that activation's tail must not also be squeezed into the next one's head. */
+  lastEndTick: number;
   /** Set only when this state was reached by activating; carries the full activation record. */
   activation: Activation | null;
   /** Direct link to the predecessor state - lets backtracking walk the chosen path without
@@ -249,10 +307,10 @@ function roundGauge(g: number): number {
   return Math.round(g * GAUGE_ROUNDING) / GAUGE_ROUNDING;
 }
 
-function mergeBest(map: Map<number, DpState>, gauge: number, state: DpState): void {
-  const existing = map.get(gauge);
+function mergeBest(map: Map<number, DpState>, bucket: number, state: DpState): void {
+  const existing = map.get(bucket);
   if (!existing || existing.bonus < state.bonus) {
-    map.set(gauge, state);
+    map.set(bucket, state);
   }
 }
 
@@ -356,18 +414,43 @@ function findLandingIndex(points: DecisionPoint[], afterIndex: number, targetTic
   return lo;
 }
 
+export interface OptimizeOptions {
+  /** Hit-window slack, in seconds, assumed usable at each end of an activation (default: the
+   *  game's full 0.07s). A caller that must actually execute the plan (e.g. a bot) can pass a
+   *  smaller, safer window. 0 disables squeezing. */
+  squeezeWindowSeconds?: number;
+  /** Override of `squeezeWindowSeconds` for the START of an activation only (notes struck late,
+   *  after the SP press) / the END only (notes struck early, before SP runs out). */
+  squeezeStartWindowSeconds?: number;
+  squeezeEndWindowSeconds?: number;
+  /** How far before its tick a phrase's last note may be struck to bank the phrase pulse early
+   *  (default 0.07s, the full hit window). */
+  earlyHitSeconds?: number;
+  /** How far before its tick a sustain may start being whammied (default 0.07s). */
+  earlyWhammySeconds?: number;
+  /** Minimum gap between two strums, when the early-hit pulse has to wait for the previous note. */
+  noteGapSeconds?: number;
+  /** Delay between a phrase pulse being banked and the SP button being usable. */
+  pulseSettleSeconds?: number;
+}
+
 export function optimizeStarPower(
   track: DifficultyTrack,
   scored: ScoredTrack,
   timing: TimingMap,
   resolution: number,
   sustainCutoffTicks = 0,
+  options: OptimizeOptions = {},
 ): OptimizationResult {
-  const whammySegments = computeWhammySegments(track, timing, sustainCutoffTicks);
-  const phrasePulseTicks = computePhrasePulseTicks(track, timing);
+  const squeezeWindow = options.squeezeWindowSeconds ?? SQUEEZE_WINDOW_SECONDS;
+  const squeezeStartWindow = options.squeezeStartWindowSeconds ?? squeezeWindow;
+  const squeezeEndWindow = options.squeezeEndWindowSeconds ?? squeezeWindow;
+  const whammySegments = computeWhammySegments(track, timing, sustainCutoffTicks, options.earlyWhammySeconds);
+  const phrasePulseTicks = computePhrasePulseTicks(track, timing, options.earlyHitSeconds, options.noteGapSeconds, options.pulseSettleSeconds);
   const timeline = new GaugeTimeline(whammySegments, phrasePulseTicks, resolution);
-  const points = buildDecisionPointsFromTimeline(track, timeline, whammySegments, phrasePulseTicks, resolution);
+  const points = buildDecisionPointsFromTimeline(timing, track, timeline, whammySegments, phrasePulseTicks, resolution, Math.max(squeezeStartWindow, squeezeEndWindow));
   const scoreIndex = new ScoreRangeIndex(scored);
+  const phraseLastNote = phraseLastNoteIndices(track);
 
   if (points.length === 0 || track.starPower.length === 0) {
     return {
@@ -378,7 +461,7 @@ export function optimizeStarPower(
     };
   }
 
-  const initialState: DpState = { bonus: 0, activation: null, prev: null };
+  const initialState: DpState = { bonus: 0, gauge: 0, lastEndTick: -Infinity, activation: null, prev: null };
   let current = new Map<number, DpState>([[0, initialState]]);
 
   // Arrivals from an activation that "jumps over" one or more decision points while its
@@ -397,18 +480,18 @@ export function optimizeStarPower(
     const point = points[i];
     const next = new Map<number, DpState>();
 
-    for (const [gauge, state] of current) {
-      const filled = roundGauge(Math.min(GAUGE_UNITS_FULL, gauge + point.gaugeDelta));
+    for (const state of current.values()) {
+      const filled = Math.min(GAUGE_UNITS_FULL, state.gauge + point.gaugeDelta);
 
       // Option A: keep banking, don't activate here.
-      mergeBest(next, filled, { bonus: state.bonus, activation: null, prev: state });
+      mergeBest(next, roundGauge(filled), { bonus: state.bonus, gauge: filled, lastEndTick: state.lastEndTick, activation: null, prev: state });
 
       // Option B: activate right now using everything banked so far (if eligible). While
       // this activation's window is running, you cannot activate again - so any decision
       // points that fall inside it are skipped over (their gauge still accrues in the
       // background) and the resulting state "lands" at the first point at/after the window
       // ends.
-      if (filled >= GAUGE_UNITS_MIN_ACTIVATE) {
+      if (filled >= GAUGE_UNITS_MIN_ACTIVATE - 1e-6) {
         const { endTick, measures } = computeActivationWindow(
           point.tick,
           filled,
@@ -417,9 +500,31 @@ export function optimizeStarPower(
           timing,
           resolution,
         );
-        const bonusGain = scoreIndex.scoreInRange(point.tick, endTick);
+        const slackFrom = timing.ticksBefore(point.tick, squeezeStartWindow + SQUEEZE_EPSILON_SECONDS);
+        const slackTo = timing.ticksBefore(endTick, -(squeezeEndWindow + SQUEEZE_EPSILON_SECONDS));
+        // The previous activation already claimed every note up to its own end + one hit window.
+        const hitFrom = Math.max(slackFrom, state.lastEndTick === -Infinity ? -Infinity : timing.ticksBefore(state.lastEndTick, -(squeezeEndWindow + SQUEEZE_EPSILON_SECONDS)));
+        let bonusGain = scoreIndex.scoreWithHitSlack(point.tick, endTick, hitFrom, slackTo);
+
+        // If the phrase-completing note is what lifted the gauge to the 50% needed to activate,
+        // that very note was struck BEFORE the activation, so it can't itself score Star Power -
+        // even though its tick lies inside (or within a hit window of) the activation. (If the
+        // gauge was already high enough without it, the player is free to strike it later.)
+        if (filled - GAUGE_UNITS_PER_PHRASE < GAUGE_UNITS_MIN_ACTIVATE - 1e-6) {
+          let critical = -1;
+          for (let j = 0; j < phrasePulseTicks.length; j++) {
+            if (phrasePulseTicks[j] <= point.tick + 1e-6 && phrasePulseTicks[j] > state.lastEndTick && (critical < 0 || phrasePulseTicks[j] > phrasePulseTicks[critical])) critical = j;
+          }
+          const noteIdx = critical >= 0 ? phraseLastNote[critical] : -1;
+          if (noteIdx >= 0) {
+            const info = scored.notes[noteIdx];
+            if (info && info.note.tick >= hitFrom && info.note.tick < slackTo) bonusGain -= info.hitPoints;
+          }
+        }
         const activatedState: DpState = {
           bonus: state.bonus + bonusGain,
+          gauge: 0,
+          lastEndTick: endTick,
           activation: { startTick: point.tick, endTick, gaugeUnitsUsed: filled, measures, bonusPoints: bonusGain },
           prev: state,
         };

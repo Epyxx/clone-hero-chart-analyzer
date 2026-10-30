@@ -2,7 +2,7 @@ import type { DrumDifficultyTrack, DrumFreestyleSection, DrumNoteEvent, SoloSect
 
 interface MidiEvent {
   tick: number;
-  type: 'noteOn' | 'noteOff' | 'tempo' | 'timeSig' | 'text' | 'trackName' | 'sysexOpen';
+  type: 'noteOn' | 'noteOff' | 'tempo' | 'timeSig' | 'text' | 'trackName' | 'sysexMarker';
   note?: number;
   velocity?: number;
   text?: string;
